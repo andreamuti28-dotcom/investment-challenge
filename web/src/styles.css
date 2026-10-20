@@ -380,3 +380,39 @@ tr.clickable { cursor: pointer; }
 .sponsor-free span { display: inline-block; background: #0f7a4f; color: #fff; font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; margin-right: 6px; }
 @media (max-width: 640px) { .sponsor-card { grid-template-columns: 1fr; padding: 16px; } .sc-mark { width: 36px; height: 36px; } .sc-cta { grid-column: 1; } .sc-name { font-size: 21px; } }
 @media (prefers-reduced-motion: reduce) { .sponsor-card { transition: none; } .sponsor-card:hover { transform: none; } }
+
+/* touch screens: comfortable tap targets in the footer, bigger checkboxes */
+@media (pointer: coarse) {
+  .footer-links a, .footer-links button.linklike, footer.site .inner > span:first-child a { display: inline-block; padding: 12px 2px; }
+  .footer-links { gap: 4px 18px; }
+}
+input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* expanded rows stay as wide as the visible table and do not scroll away sideways */
+.row-detail { position: sticky; left: 20px; max-width: 100%; }
+@media (max-width: 760px) { tr.chart-row > td { padding: 14px 12px; } .row-detail { left: 12px; } }
+
+/* phones and small tablets: the first column stays visible while a wide table scrolls,
+   and a soft shadow at the edges tells there is more to see */
+@media (max-width: 760px) {
+  th, td { padding: 10px 11px; }
+  .table-wrap {
+    background:
+      linear-gradient(to right, var(--surface) 30%, rgba(16, 20, 27, 0)) left center / 28px 100% no-repeat local,
+      linear-gradient(to left, var(--surface) 30%, rgba(16, 20, 27, 0)) right center / 28px 100% no-repeat local,
+      linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)) left center / 14px 100% no-repeat scroll,
+      linear-gradient(to left, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)) right center / 14px 100% no-repeat scroll,
+      var(--surface);
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-wrap tr:not(.chart-row) > :first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
+  .table-wrap thead tr > :first-child { background: var(--bg-2); }
+  .table-wrap tr.first:not(.chart-row) > :first-child { background: linear-gradient(rgba(122, 162, 255, 0.08), rgba(122, 162, 255, 0.08)), var(--surface); box-shadow: inset 3px 0 0 var(--accent), 1px 0 0 var(--line); }
+  /* leaderboard: rank and team name both stay in view */
+  table.sticky-2 > * > tr > :first-child { min-width: 40px; width: 40px; max-width: 40px; box-shadow: none; }
+  table.sticky-2 > * > tr:not(.chart-row) > :nth-child(2) { position: sticky; left: 40px; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--line); min-width: 150px !important; max-width: 170px; }
+  table.sticky-2 > thead > tr > :nth-child(2) { background: var(--bg-2); }
+  table.sticky-2 > * > tr.first:not(.chart-row) > :nth-child(2) { background: linear-gradient(rgba(122, 162, 255, 0.08), rgba(122, 162, 255, 0.08)), var(--surface); }
+}
+
+@media (max-width: 760px) { .table-wrap tr:not(.chart-row) > td:first-child { min-width: 88px; } }

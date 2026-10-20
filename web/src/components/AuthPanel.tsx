@@ -87,7 +87,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
             </div>
           </div>
           <div><label htmlFor="rg-nm">Full name</label><input id="rg-nm" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><label htmlFor="rg-em">E-mail{role === "president" ? " (the one registered by the organiser)" : ""}</label><input id="rg-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /><p className="small muted" style={{ margin: "6px 0 0" }}>Tip: your university e-mail also gives you free access to WeFocusBuddy, our sponsor.</p></div>
+          <div><label htmlFor="rg-em">E-mail{role === "president" ? " (the one registered by the organiser)" : ""}</label><input id="rg-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /><p className="small muted" style={{ margin: "6px 0 0" }}>Tip: with a university e-mail, WeFocusBuddy, our sponsor, is free.</p></div>
           <div><label htmlFor="rg-pw">Password (at least 8 characters)</label><input id="rg-pw" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
           {role === "member" && (
             <div>

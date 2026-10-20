@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { must, useLoad } from "../lib/data";
 import { dateTime, eur, pct, pctU, plain, signClass } from "../lib/format";
-import { Loading, Notice, Tabs } from "../components/ui";
+import { Loading, Notice, RowDetail, Tabs } from "../components/ui";
 import { PALETTE, type Series } from "../components/LineChart";
 import { PortfolioChart } from "../components/PortfolioChart";
 import { TeamHoldings } from "../components/TeamHoldings";
@@ -66,7 +66,7 @@ export default function Leaderboard() {
       ) : (
         <>
           <div className="table-wrap">
-            <table>
+            <table className="sticky-2">
               <thead>
                 <tr>
                   <th className="num">#</th><th>Team</th><th className="num">NAV</th><th className="num">Total return</th>
@@ -99,11 +99,11 @@ export default function Leaderboard() {
                     <td><button className="secondary small chart-toggle" aria-expanded={open === r.team_id}>{open === r.team_id ? "Hide" : "Details"}</button></td>
                   </tr>
                   {open === r.team_id && (
-                    <tr className="chart-row"><td colSpan={17}>
+                    <tr className="chart-row"><td colSpan={17}><RowDetail>
                       <div className="small muted" style={{ marginBottom: 8 }}>Portfolio value of {r.name} in euro compared with the MSCI World (both start at {eur(1_000_000, 0)})</div>
                       <PortfolioChart mode="value"
                         title={`Portfolio value of ${r.name}`}
-                        yFormat={(v) => eur(v, 0)}
+                        yFormat={(v) => `€ ${(v / 1e6).toFixed(Math.abs(v) >= 1e7 ? 1 : 3)}M`}
                         series={[
                           { name: r.name, color: "#7aa2ff", points: data.nav.filter((n) => n.team_id === r.team_id).map((n) => ({ x: n.date, y: Number(n.nav_eur) })) },
                           { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, benchmark: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) })) },
@@ -111,7 +111,7 @@ export default function Leaderboard() {
                       />
                       <h3 style={{ margin: "18px 0 8px" }}>Positions of {r.name}</h3>
                       <TeamHoldings teamId={r.team_id} />
-                    </td></tr>
+                    </RowDetail></td></tr>
                   )}
                   </Fragment>
                 ))}

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { loadCalendar, must, useLoad } from "../lib/data";
 import { date, dateTime, eur, num, pct, signClass } from "../lib/format";
-import { Loading, Notice, Stat, Tabs } from "../components/ui";
+import { Loading, Notice, RowDetail, Stat, Tabs } from "../components/ui";
 import { StockChart } from "../components/StockChart";
 import { PortfolioChart } from "../components/PortfolioChart";
 
@@ -142,7 +142,7 @@ function Portfolio({ d }: { d: any }) {
                     <td><button className="secondary small chart-toggle" aria-expanded={chart === p.id}>{chart === p.id ? "Hide chart" : "Chart"}</button></td>
                   </tr>
                   {chart === p.id && (
-                    <tr className="chart-row"><td colSpan={12}><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></td></tr>
+                    <tr className="chart-row"><td colSpan={12}><RowDetail><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></RowDetail></td></tr>
                   )}
                   </Fragment>
                 ))}
@@ -413,7 +413,7 @@ function History({ d }: { d: any }) {
                 <td>{p.exit_reason === "stop" ? <span className="badge rejected">stop -50%</span> : p.exit_reason}</td>
                 <td className={`num ${signClass(p.pnl_local)}`}>{num(p.pnl_local)}</td><td className={`num ${signClass(p.pnl_eur)}`}>{eur(p.pnl_eur)}</td>
                 <td><button className="secondary small chart-toggle">{chart === p.id ? "Hide chart" : "Chart"}</button></td></tr>
-              {chart === p.id && <tr className="chart-row"><td colSpan={11}><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></td></tr>}
+              {chart === p.id && <tr className="chart-row"><td colSpan={11}><RowDetail><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></RowDetail></td></tr>}
               </Fragment>
             ))}</tbody>
           </table></div>

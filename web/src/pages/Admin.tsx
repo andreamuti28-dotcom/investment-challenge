@@ -244,10 +244,10 @@ function Visits() {
       <div className="grid cols-2">
         <div className="card">
           <h3>By day (last 60 days)</h3>
-          {s.daily.length === 0 ? <p className="muted">No visits yet.</p> : (
+          {(s.daily ?? []).length === 0 ? <p className="muted">No visits yet.</p> : (
             <div className="table-wrap" style={{ maxHeight: 360, overflowY: "auto" }}><table>
               <thead><tr><th>Day</th><th className="num">Visits</th><th className="num">Visitors</th></tr></thead>
-              <tbody>{[...s.daily].reverse().map((r: any) => <tr key={r.day}><td>{date(r.day)}</td><td className="num">{r.visits}</td><td className="num">{r.visitors}</td></tr>)}</tbody>
+              <tbody>{[...(s.daily ?? [])].reverse().map((r: any) => <tr key={r.day}><td>{date(r.day)}</td><td className="num">{r.visits}</td><td className="num">{r.visitors}</td></tr>)}</tbody>
             </table></div>
           )}
         </div>

@@ -1,4 +1,20 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+
+/** Content of an expanded table row: as wide as the visible table, pinned while the table scrolls sideways. */
+export function RowDetail({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState<number>();
+  useLayoutEffect(() => {
+    const wrap = ref.current?.closest(".table-wrap") as HTMLElement | null;
+    const td = ref.current?.parentElement;
+    if (!wrap || !td) return;
+    const pad = () => parseFloat(getComputedStyle(td).paddingLeft) + parseFloat(getComputedStyle(td).paddingRight);
+    const ro = new ResizeObserver(() => setW(wrap.clientWidth - pad()));
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, []);
+  return <div ref={ref} className="row-detail" style={{ width: w }}>{children}</div>;
+}
 
 export function Countdown({ to }: { to: string }) {
   const [now, setNow] = useState(Date.now());

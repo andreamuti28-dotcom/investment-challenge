@@ -10,7 +10,7 @@ export interface Series {
 }
 
 const narrow = typeof window !== "undefined" && window.innerWidth < 640;
-const W = narrow ? 420 : 900, H = narrow ? 300 : 320, PL = 56, PR = 12, PT = 16, PB = 36;
+const W = narrow ? 420 : 900, H = narrow ? 300 : 320, PR = 12, PT = 16, PB = 36;
 
 export interface Marker { x: string; label: string }
 
@@ -24,6 +24,8 @@ export function LineChart({ series, yFormat, title, markers = [] }: { series: Se
   let y0 = Math.min(...all.map((p) => p.y)), y1 = Math.max(...all.map((p) => p.y));
   if (y0 === y1) { y0 -= 0.01; y1 += 0.01; }
   const pad = (y1 - y0) * 0.08; y0 -= pad; y1 += pad;
+  // left margin sized on the longest axis label, so values are never cut
+  const PL = Math.max(48, Math.max(...Array.from({ length: 5 }, (_, i) => yFormat(y0 + ((y1 - y0) * i) / 4).length)) * 7 + 16);
   const X = (d: string) => PL + ((t(d) - x0) / (x1 - x0)) * (W - PL - PR);
   const Y = (v: number) => PT + (1 - (v - y0) / (y1 - y0)) * (H - PT - PB);
   const ticks = Array.from({ length: 5 }, (_, i) => y0 + ((y1 - y0) * i) / 4);
