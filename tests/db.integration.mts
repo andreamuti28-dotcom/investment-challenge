@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -232,7 +232,7 @@ ok("wrong code refused", /not recognised/.test((j1.rows[0] as any).j.error ?? ""
 const j2 = await as("authenticated", U5, "select join_with_code('abcd efgh jklm') j");
 ok("joins with the code (any spacing/case)", (j2.rows[0] as any).j.team !== undefined, JSON.stringify(j2.rows[0]));
 const j3 = await as("authenticated", U5, "select join_with_code('ABCD-EFGH-JKLM') j");
-ok("cannot join twice", /already a member/.test((j3.rows[0] as any).j.error ?? ""));
+ok("cannot join twice", /already in a Competition A team/.test((j3.rows[0] as any).j.error ?? ""));
 const mem5 = await db.query(`select role, full_name from team_members where user_id = '${U5}'`);
 ok("joined as member with the registration name", (mem5.rows[0] as any)?.role === "member" && (mem5.rows[0] as any)?.full_name === "Nuovo Membro", JSON.stringify(mem5.rows));
 for (let i = 0; i < 10; i++) await as("authenticated", U6, "select join_with_code('ZZZZ-ZZZZ-ZZZZ')");
@@ -244,4 +244,40 @@ const pres = await db.query(`select user_id from team_members where team_id = '1
 ok("organiser makes a president (only one per team)", pres.rows.length === 1 && (pres.rows[0] as any).user_id === U5, JSON.stringify(pres.rows));
 await as("authenticated", ADMIN, `select set_membership_admin('${U6}', '10000000-0000-0000-0000-000000000002', 'member')`);
 ok("organiser adds an account to a team", (await db.query(`select 1 from team_members where user_id = '${U6}'`)).rows.length === 1);
+// two competitions: one A team and one B team per person, random B draw, team chat
+const A1 = "10000000-0000-0000-0000-000000000001", B1 = "10000000-0000-0000-0000-000000000002", A2 = "10000000-0000-0000-0000-0000000000a2";
+await db.exec(`insert into teams (id,name,competition,university) values ('${A2}','Other A','A','Other')`);
+await as("authenticated", ADMIN, `select set_membership_admin('${U1}', '${B1}', 'member')`);
+ok("an A member can also be in a B team", (await db.query(`select team_id from team_members where user_id = '${U1}'`)).rows.length === 2);
+await expectErr("never two A teams", () => db.query(`insert into team_members (user_id, team_id, role) values ('${U1}', '${A2}', 'member')`), /Already in a Competition A team/);
+const myIds = await as("authenticated", U1, "select count(*)::int c from my_team_ids()");
+ok("my_team_ids lists both teams", (myIds.rows[0] as any).c === 2);
+const ob = await as("authenticated", U1, `select (place_order_in('${B1}','AAPL','open','long',5)).team_id t`);
+ok("orders for the chosen team", (ob.rows[0] as any).t === B1);
+await expectErr("no orders for someone else's team", () => as("authenticated", U1, `select place_order_in('${A2}','AAPL','open','long',5)`), /not a member/);
+const seeB = await as("authenticated", U1, `select count(*)::int c from orders where team_id = '${B1}'`);
+ok("member reads the orders of both teams", (seeB.rows[0] as any).c >= 1);
+// draw
+const pool = await db.query(`select count(*)::int c from auth.users u where not exists (select 1 from user_roles r where r.user_id=u.id and r.role='admin')
+  and not exists (select 1 from team_members m join teams t on t.id=m.team_id where m.user_id=u.id and t.competition='B')`);
+const nPool = (pool.rows[0] as any).c;
+const gen = await as("authenticated", ADMIN, "select generate_b_teams(2) j");
+const gj = (gen.rows[0] as any).j;
+ok("B draw creates teams for everyone", gj.people === nPool && gj.teams === Math.floor(nPool / 2), JSON.stringify([gj, nPool]));
+const left = await db.query(`select count(*)::int c from auth.users u where not exists (select 1 from user_roles r where r.user_id=u.id and r.role='admin')
+  and not exists (select 1 from team_members m join teams t on t.id=m.team_id where m.user_id=u.id and t.competition='B')`);
+ok("nobody left without a B team", (left.rows[0] as any).c === 0);
+const names = await db.query(`select name from teams where competition='B' and name like 'B Team %' order by name`);
+ok("B teams named in sequence", (names.rows[0] as any)?.name === "B Team 01", JSON.stringify(names.rows));
+await expectErr("draw needs enough people", () => as("authenticated", ADMIN, "select generate_b_teams(2)"), /at least 2 are needed/);
+await expectErr("only the organiser draws", () => as("authenticated", U1, "select generate_b_teams(2)"), /Reserved/);
+// chat
+await as("authenticated", U1, `insert into team_messages (team_id, body, author) values ('${A1}', '  hello team  ', 'fake')`);
+const msg = await db.query(`select author, body, user_id from team_messages`);
+ok("message stamped by the server", (msg.rows[0] as any).user_id === U1 && (msg.rows[0] as any).body === "hello team" && (msg.rows[0] as any).author !== "fake", JSON.stringify(msg.rows));
+const outsider = await db.query(`select user_id from team_members where team_id = '${B1}' and user_id <> '${U1}' and user_id not in (select user_id from team_members where team_id = '${A1}') limit 1`);
+const OUT = (outsider.rows[0] as any).user_id;
+ok("other teams cannot read the chat", (await as("authenticated", OUT, `select * from team_messages where team_id = '${A1}'`)).rows.length === 0);
+await expectErr("other teams cannot write in the chat", () => as("authenticated", OUT, `insert into team_messages (team_id, body) values ('${A1}', 'x')`), /row-level security/);
+ok("organiser reads every chat", (await as("authenticated", ADMIN, "select * from team_messages")).rows.length === 1);
 console.log(fails ? `\n${fails} FAILED` : "\nALL DB TESTS PASSED");

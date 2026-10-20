@@ -599,3 +599,35 @@ select.mini { min-height: 32px; padding: 4px 8px; font-size: 13px; max-width: 22
 @keyframes led-run { to { --led: 360deg; } }
 .auth-panel:hover, .auth-panel:focus-within { transform: translateY(-2px); box-shadow: 0 0 36px -8px rgba(255, 255, 255, 0.35), 0 18px 50px -20px rgba(255, 255, 255, 0.28); }
 @media (prefers-reduced-motion: reduce) { .auth-panel::before { animation: none; } .auth-panel, .auth-panel:hover, .auth-panel:focus-within { transform: none; transition: none; } }
+
+/* ---------------- team switcher (A / B) */
+.team-switch { display: inline-flex; gap: 4px; padding: 4px; margin: 4px 0 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); flex-wrap: nowrap; max-width: 100%; overflow-x: auto; }
+.team-switch button { min-height: 34px; padding: 4px 14px 4px 6px; border-radius: 999px; background: transparent; border: 0; color: var(--muted); font-size: 13.5px; display: inline-flex; align-items: center; gap: 8px; }
+.team-switch button .ts-comp { flex: 0 0 auto;  width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; background: var(--surface-2); color: var(--text); }
+.team-switch button.on { background: var(--surface-2); color: #fff; }
+.team-switch button.on .ts-comp { background: var(--accent); color: var(--ink); }
+.team-switch button:hover:not(:disabled) { color: #fff; background: var(--surface-2); }
+
+/* ---------------- team chat */
+.chat { display: flex; flex-direction: column; gap: 12px; }
+.chat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+.chat-head h3 { margin: 0; }
+.chat-box { height: min(60vh, 520px); overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); display: flex; flex-direction: column; gap: 2px; }
+.chat-empty { margin: auto; }
+.chat-day { text-align: center; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); margin: 14px 0 8px; }
+.chat-msg { display: flex; flex-direction: column; align-items: flex-start; max-width: 78%; margin: 4px 0; }
+.chat-msg.mine { align-self: flex-end; align-items: flex-end; margin-left: auto; }
+.chat-author { font-size: 12px; color: var(--accent-2); margin: 0 0 3px 4px; }
+.chat-bubble { padding: 9px 13px; border-radius: 14px 14px 14px 4px; background: var(--surface-2); color: var(--text); white-space: pre-wrap; word-break: break-word; font-size: 14.5px; line-height: 1.45; }
+.chat-msg.mine .chat-bubble { border-radius: 14px 14px 4px 14px; background: #2b3f73; color: #fff; }
+.chat-time { font-size: 11px; color: var(--faint); margin: 3px 4px 0; }
+.chat-form { display: flex; gap: 8px; align-items: flex-end; }
+.chat-form textarea { flex: 1; resize: none; min-height: 44px; max-height: 160px; field-sizing: content; }
+.chat-form button { min-height: 44px; }
+
+.draw-b { border-color: rgba(122, 162, 255, 0.35); }
+.draw-b .stat { min-width: 150px; }
+input.name-edit { min-height: 32px; padding: 4px 8px; font-weight: 600; background: transparent; border-color: transparent; max-width: 230px; }
+input.name-edit:hover, input.name-edit:focus { border-color: var(--line-2); background: var(--bg-2); }
+.team-switch button { flex: 0 0 auto; white-space: nowrap; }
+.team-switch .ts-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }

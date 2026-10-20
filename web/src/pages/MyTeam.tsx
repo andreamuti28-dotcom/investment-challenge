@@ -2,6 +2,8 @@ import { Fragment, useMemo, useState } from "react";
 import { callFunction, errText, supabase } from "../lib/supabase";
 import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import JoinTeam from "../components/JoinTeam";
+import TeamChat from "../components/TeamChat";
 import { loadCalendar, must, useLoad } from "../lib/data";
 import { date, dateTime, eur, num, pct, signClass } from "../lib/format";
 import { Loading, Notice, RowDetail, Stat, Tabs } from "../components/ui";
@@ -30,7 +32,7 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
     return { ...(r as any), role: "organiser" } as any;
   }, [teamId, auth.team?.id]);
   const team = t.data;
-  const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "team" | "account">("portfolio");
+  const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "chat" | "team" | "account">("portfolio");
   const q = useLoad(async () => {
     if (!team) return null;
     const [cal, pos, sub, orders, nav, bench, met, instr, fx] = await Promise.all([
@@ -67,18 +69,28 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
 
   return (
     <>
+      {!adminView && auth.teams.length > 1 && (
+        <div className="team-switch" role="tablist" aria-label="Your teams">
+          {auth.teams.map((x) => (
+            <button key={x.id} role="tab" aria-selected={x.id === team.id} className={x.id === team.id ? "on" : ""} onClick={() => auth.setActiveTeam(x.id)}>
+              <span className="ts-comp">{x.competition}</span><span className="ts-name">{x.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="page-head">
         <div className="eyebrow">Competition {team.competition} · {adminView ? "organiser view" : team.role}</div>
         <h1>{team.name}</h1>
         {adminView && <p className="muted small" style={{ marginTop: 8 }}>You are acting for this team: orders you place here are recorded in its name. <Link to="/admin">Back to the admin panel</Link></p>}
       </div>
       <Tabs value={tab} onChange={setTab} items={adminView
-        ? [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["team", "Team"]]
-        : [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["team", "Team"], ["account", "Account"]]} />
+        ? [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"]]
+        : [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"], ["account", "Account"]]} />
       {tab === "portfolio" && <Portfolio d={d} />}
       {tab === "orders" && <Orders d={d} reload={q.reload} />}
       {tab === "history" && <History d={d} />}
-      {tab === "team" && <TeamTab teamId={adminView ? team.id : undefined} />}
+      {tab === "chat" && <TeamChat key={team.id} teamId={team.id} teamName={team.name} />}
+      {tab === "team" && <TeamTab key={team.id} teamId={team.id} admin={adminView} />}
       {tab === "account" && <Account />}
     </>
   );
@@ -239,7 +251,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     const args = { p_symbol: sel.symbol, p_action: action, p_side: action === "close" ? null : side, p_quantity: action === "close" ? null : Number(qty) };
     const { data, error } = d.adminView
       ? await supabase.rpc("place_order_admin", { p_team: d.teamId, ...args })
-      : await supabase.rpc("place_order", args);
+      : await supabase.rpc("place_order_in", { p_team: d.teamId, ...args });
     setBusy(false);
     if (error) return setMsg({ kind: "err", text: errText(error) });
     const o = data as Order;
@@ -423,9 +435,10 @@ function History({ d }: { d: any }) {
   );
 }
 
-function TeamTab({ teamId }: { teamId?: string }) {
+function TeamTab({ teamId, admin }: { teamId: string; admin: boolean }) {
+  const { teams } = useAuth();
   const q = useLoad(async () => {
-    const { data, error } = teamId ? await supabase.rpc("team_info_admin", { p_team: teamId }) : await supabase.rpc("my_team_info");
+    const { data, error } = admin ? await supabase.rpc("team_info_admin", { p_team: teamId }) : await supabase.rpc("team_info_for", { p_team: teamId });
     if (error) throw new Error(error.message);
     return data as { role: string; code: string | null; members: { name: string; role: string; email: string | null; joined: string }[] } | null;
   });
@@ -439,7 +452,7 @@ function TeamTab({ teamId }: { teamId?: string }) {
         <div className="card dark">
           <div className="eyebrow">Team code</div>
           <h3 style={{ marginTop: 10 }}>Invite your members</h3>
-          <p className="muted">Share this code with your team. Members choose "Member" when they register and enter it. Keep it within the team.</p>
+          <p className="muted">Share this code with your association's members: they enter it when they register, or later from their account. Keep it within the team.</p>
           <div className="row" style={{ marginTop: 16 }}>
             <span className="code-big">{t.code ?? "not generated yet"}</span>
             {t.code && (
@@ -461,6 +474,9 @@ function TeamTab({ teamId }: { teamId?: string }) {
         </table></div>
         <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. To remove a member, contact the organiser.</p>
       </div>
+      {!admin && !teams.some((x) => x.competition === "A") && (
+        <div className="card"><h3>Your association's team</h3><p className="muted small">You are not in a Competition A team yet: enter the code your president gave you.</p><JoinTeam inline /></div>
+      )}
     </div>
   );
 }

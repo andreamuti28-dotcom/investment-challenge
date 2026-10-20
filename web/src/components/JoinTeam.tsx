@@ -4,7 +4,7 @@ import { useAuth } from "../lib/auth";
 import { Notice } from "./ui";
 
 /** Shown to a signed-in member who is not in a team yet: join with the team code. */
-export default function JoinTeam() {
+export default function JoinTeam({ inline = false }: { inline?: boolean } = {}) {
   const { session, refresh } = useAuth();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,22 +17,26 @@ export default function JoinTeam() {
     if ((data as any)?.error) return setErr((data as any).error);
     await refresh();
   }
+  const form = (
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); join(); }}>
+      <Notice kind="err">{err}</Notice>
+      <div>
+        <label htmlFor="jt-cd">Team code</label>
+        <input id="jt-cd" autoComplete="off" spellCheck={false} required placeholder="XXXX-XXXX-XXXX" style={{ fontFamily: "var(--mono)", letterSpacing: "0.1em" }}
+          value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+      </div>
+      <button type="submit" disabled={busy || code.replace(/[^A-Z0-9]/g, "").length < 12}>{busy ? "Joining…" : "Join my team"}</button>
+      {!inline && <button type="button" className="linklike" onClick={() => supabase.auth.signOut()}>Sign out</button>}
+    </form>
+  );
+  if (inline) return form;
   return (
     <div style={{ maxWidth: 480, margin: "40px auto" }}>
       <div className="auth-panel">
         <div className="eyebrow">Almost there</div>
         <h2 style={{ margin: "10px 0 8px" }}>Join your team</h2>
-        <p className="sub">Signed in as {session?.user.email}. Enter the team code your president (or the organiser) gave you: you will join your association's team and see its portfolio.</p>
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); join(); }}>
-          <Notice kind="err">{err}</Notice>
-          <div>
-            <label htmlFor="jt-cd">Team code</label>
-            <input id="jt-cd" autoComplete="off" spellCheck={false} required placeholder="XXXX-XXXX-XXXX" style={{ fontFamily: "var(--mono)", letterSpacing: "0.1em" }}
-              value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
-          </div>
-          <button type="submit" disabled={busy || code.replace(/[^A-Z0-9]/g, "").length < 12}>{busy ? "Joining…" : "Join my team"}</button>
-          <button type="button" className="linklike" onClick={() => supabase.auth.signOut()}>Sign out</button>
-        </form>
+        <p className="sub">Signed in as {session?.user.email}. Enter the team code your president (or the organiser) gave you to join your association's team. Competition B teams are drawn by the organiser: yours will appear here automatically.</p>
+        {form}
       </div>
     </div>
   );

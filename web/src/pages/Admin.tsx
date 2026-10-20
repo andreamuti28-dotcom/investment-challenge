@@ -95,6 +95,7 @@ function Teams() {
           <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim()} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
         </div>
       </div>
+      <DrawB reload={q.reload} setMsg={setMsg} />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Team</th><th>Comp.</th><th>President</th><th className="num">Members</th><th>Team code</th><th className="num">Violations</th><th /></tr></thead>
@@ -123,13 +124,13 @@ function TeamRow({ t, reload, setMsg }: any) {
     setBusy(false);
   }
   async function deleteTeam() {
-    const typed = window.prompt(`This permanently deletes ${t.name}: all its accounts (president and members), orders, positions and results. It cannot be undone.\n\nType the team name to confirm:`);
+    const typed = window.prompt(`This permanently deletes ${t.name} with its orders, positions, results and chat. The members' accounts stay. It cannot be undone.\n\nType the team name to confirm:`);
     if (typed === null) return;
     if (typed.trim() !== t.name) return setMsg({ kind: "err", text: "The name did not match: nothing was deleted." });
     setBusy(true);
     try {
       const r = await callFunction("admin", { action: "delete_team", teamId: t.id });
-      setMsg({ kind: "ok", text: `${t.name} deleted, with ${r.deletedAccounts} account(s).` });
+      setMsg({ kind: "ok", text: `${t.name} deleted.` }); void r;
       await reload();
       refreshResults();
     } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
@@ -137,9 +138,11 @@ function TeamRow({ t, reload, setMsg }: any) {
   }
   return (
     <tr>
-      <td><b>{t.name}</b><div className="muted small">{t.university}</div></td>
+      <td><input aria-label={`Name of ${t.name}`} className="name-edit" defaultValue={t.name}
+        onBlur={async (e) => { const v = e.target.value.trim(); if (!v || v === t.name) { e.target.value = t.name; return; } const { error } = await supabase.from("teams").update({ name: v }).eq("id", t.id); setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: `Renamed to ${v}.` }); reload(); }} />
+        <div className="muted small">{t.university}</div></td>
       <td>{t.competition}</td>
-      <td>{t.president ? <><b>{t.president}</b></> : <span className="badge pending">not set</span>}<div className="muted small" style={{ marginTop: 4 }}>set in Accounts</div></td>
+      <td>{t.competition === "B" ? <span className="muted small">no president</span> : <>{t.president ? <b>{t.president}</b> : <span className="badge pending">not set</span>}<div className="muted small" style={{ marginTop: 4 }}>set in Accounts</div></>}</td>
       <td className="num">{t.members}</td>
       <td>
         {code ? (
@@ -167,6 +170,50 @@ function TeamRow({ t, reload, setMsg }: any) {
   );
 }
 
+// Competition B: random mixed teams
+function DrawB({ reload, setMsg }: { reload: () => void; setMsg: (m: { kind: "ok" | "err"; text: ReactNode }) => void }) {
+  const users = useLoad(async () => (await callFunction("admin", { action: "list_users" })).users as any[]);
+  const [size, setSize] = useState(5);
+  const [busy, setBusy] = useState(false);
+  const pool = (users.data ?? []).filter((u) => u.kind !== "admin" && !u.teamBId);
+  const drawn = (users.data ?? []).filter((u) => u.teamBId).length;
+  const teamsOut = Math.floor(pool.length / Math.max(2, size));
+  async function draw() {
+    if (!window.confirm(`Draw ${teamsOut} Competition B team(s) of ${size}${pool.length % size ? `–${size + 1}` : ""} people from the ${pool.length} registered people without a B team?`)) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("generate_b_teams", { p_size: size });
+    setBusy(false);
+    if (error) return setMsg({ kind: "err", text: errText(error) });
+    setMsg({ kind: "ok", text: `${(data as any).teams} Competition B team(s) drawn for ${(data as any).people} people. Each team already has its chat.` });
+    users.reload(); reload();
+  }
+  async function undo() {
+    const typed = window.prompt("This deletes EVERY Competition B team with its orders, results and chat (accounts stay). Type DELETE B to confirm:");
+    if (typed === null) return;
+    if (typed.trim() !== "DELETE B") return setMsg({ kind: "err", text: "Not confirmed: nothing was deleted." });
+    setBusy(true);
+    try { const r = await callFunction("admin", { action: "delete_b_teams" }); setMsg({ kind: "ok", text: `${r.deletedTeams} Competition B team(s) deleted.` }); }
+    catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+    setBusy(false);
+    users.reload(); reload(); refreshResults();
+  }
+  return (
+    <div className="card draw-b">
+      <h3>Competition B · random teams</h3>
+      <p className="muted small">Every registered person can also play in Competition B. The draw puts everybody who is not in a B team yet into new teams of the size you choose (some get one person more when numbers do not divide exactly), spreading members of the same association over different teams. B teams have no president; each has its own chat. People who register later can be drawn again, or added by hand in Accounts.</p>
+      {users.error ? <Notice kind="err">{users.error}</Notice> : !users.data ? <Loading /> : (
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <div className="stat"><div className="label">Waiting for a B team</div><div className="value">{pool.length}</div></div>
+          <div className="stat"><div className="label">Already in a B team</div><div className="value">{drawn}</div></div>
+          <div className="field narrow"><label htmlFor="bsz">People per team</label><input id="bsz" type="number" min={2} max={20} value={size} onChange={(e) => setSize(Math.max(2, Math.min(20, Number(e.target.value) || 2)))} /></div>
+          <button disabled={busy || teamsOut < 1} onClick={draw}>{busy ? "Drawing…" : teamsOut < 1 ? `Need at least ${size} people` : `Draw ${teamsOut} team${teamsOut > 1 ? "s" : ""}`}</button>
+          {drawn > 0 && <button className="danger" disabled={busy} onClick={undo}>Delete all B teams</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ accounts
 function Accounts() {
   const q = useLoad(async () => (await callFunction("admin", { action: "list_users" })).users as any[]);
@@ -187,24 +234,28 @@ function Accounts() {
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <PasswordRequests users={q.data} onMessage={setMsg} />
       <h3 style={{ marginTop: 8 }}>All accounts</h3>
-      <p className="muted small">Everyone registers with their own account as a member. Here you put an account in a team and choose who is the president (one per team): the president sees the team code in the Team tab and shares it; members can also join by themselves with the code. Every account that can sign in. Deleting a member or president removes only that person: the team and its results stay. A deleted person can register again with the same e-mail. To remove a whole team, use "Delete team" in the Teams tab.</p>
+      <p className="muted small">Everyone registers with their own account as a member. Each person can be in one Competition A team (their association) and one Competition B team (drawn in the Teams tab). Here you move people between teams and choose the president of each association team (one per team): the president sees the team code and shares it; members can also join by themselves with the code. Deleting a member or president removes only that person: the team and its results stay. A deleted person can register again with the same e-mail. To remove a whole team, use "Delete team" in the Teams tab.</p>
       <div className="table-wrap"><table>
-        <thead><tr><th>Name</th><th>E-mail</th><th>Role</th><th>Team</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
+        <thead><tr><th>Name</th><th>E-mail</th><th>Team A (association)</th><th>Role in A</th><th>Team B</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
         <tbody>{q.data.map((u) => (
           <tr key={u.id}>
             <td>{u.name ?? "–"}{u.self && <span className="badge" style={{ marginLeft: 6 }}>you</span>}</td>
             <td className="small">{u.email}</td>
             <td>{u.kind === "admin" ? <span className="badge president">admin</span> : (
-              <select aria-label={`Role of ${u.email}`} className="mini" value={u.teamId ? u.kind : ""} disabled={!u.teamId}
-                onChange={(e) => setMembership(u, u.teamId, e.target.value)}>
-                {!u.teamId && <option value="">no team</option>}
+              <select aria-label={`Competition A team of ${u.email}`} className="mini" value={u.teamId ?? ""} onChange={(e) => setMembership(u, e.target.value, "member")}>
+                {!u.teamId && <option value="">– choose –</option>}
+                {(teams.data ?? []).filter((t) => t.competition === "A").map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}</td>
+            <td>{u.kind === "admin" || !u.teamId ? "–" : (
+              <select aria-label={`Role of ${u.email}`} className="mini" value={u.kind} onChange={(e) => setMembership(u, u.teamId, e.target.value)}>
                 <option value="member">member</option><option value="president">president</option>
               </select>
             )}</td>
             <td>{u.kind === "admin" ? "–" : (
-              <select aria-label={`Team of ${u.email}`} className="mini" value={u.teamId ?? ""} onChange={(e) => setMembership(u, e.target.value, u.teamId ? (u.kind === "president" ? "member" : u.kind) : "member")}>
-                {!u.teamId && <option value="">– choose a team –</option>}
-                {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.competition} · {t.name}</option>)}
+              <select aria-label={`Competition B team of ${u.email}`} className="mini" value={u.teamBId ?? ""} onChange={(e) => setMembership(u, e.target.value, "member")}>
+                {!u.teamBId && <option value="">– not drawn –</option>}
+                {(teams.data ?? []).filter((t) => t.competition === "B").map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             )}</td>
             <td className="small">{date(u.createdAt)}</td>
