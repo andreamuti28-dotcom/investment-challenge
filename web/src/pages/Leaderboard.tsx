@@ -41,7 +41,7 @@ export default function Leaderboard() {
       color: PALETTE[i % PALETTE.length],
       points: data.nav.filter((n) => n.team_id === t.team_id).map((n) => ({ x: n.date, y: Number(n.nav_eur) / cap - 1 })),
     }));
-    s.push({ name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) });
+    s.push({ name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, benchmark: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) });
     return s;
   }, [data, rows]);
 
@@ -100,12 +100,12 @@ export default function Leaderboard() {
                   {open === r.team_id && (
                     <tr className="chart-row"><td colSpan={17}>
                       <div className="small muted" style={{ marginBottom: 8 }}>Portfolio value of {r.name} in euro compared with the MSCI World (both start at {eur(1_000_000, 0)})</div>
-                      <PortfolioChart
+                      <PortfolioChart mode="value"
                         title={`Portfolio value of ${r.name}`}
                         yFormat={(v) => eur(v, 0)}
                         series={[
                           { name: r.name, color: "#7aa2ff", points: data.nav.filter((n) => n.team_id === r.team_id).map((n) => ({ x: n.date, y: Number(n.nav_eur) })) },
-                          { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) })) },
+                          { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, benchmark: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) })) },
                         ]}
                       />
                     </td></tr>
@@ -121,7 +121,7 @@ export default function Leaderboard() {
           </p>
           <div className="card" style={{ marginTop: 20 }}>
             <h3>Performance since the start</h3>
-            <PortfolioChart rebase series={series} yFormat={(v) => pct(v, 1)} title="Total return of the top teams compared with the MSCI World" />
+            <PortfolioChart series={series} yFormat={(v) => pct(v, 1)} title="Total return of the top teams compared with the MSCI World" />
           </div>
         </>
       )}

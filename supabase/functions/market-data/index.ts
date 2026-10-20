@@ -1,14 +1,37 @@
 // Stock search and validation for logged-in users.
 // Body: { action: "search", q } | { action: "validate", symbol } | { action: "history", symbol, from? }
-import { fetchChart, searchEquities, validateSymbol } from "../_shared/marketdata.ts";
+//     | { action: "benchmark", from }  public: the benchmark in euro before the challenge start
+import { fetchChart, fetchEcb, searchEquities, validateSymbol } from "../_shared/marketdata.ts";
 import { caller, cors, env, json, serviceHeaders } from "../_shared/http.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  const who = await caller(req);
-  if (!who) return json({ error: "Please sign in" }, 401);
   const body = await req.json().catch(() => ({}));
   try {
+    if (body.action === "benchmark") {
+      // public data only (index price and ECB rate), used by the charts before the start date
+      const e = env();
+      const st = (await (await fetch(`${e.supabaseUrl}/rest/v1/challenge_settings?select=benchmark_symbol,benchmark_currency,start_date&id=eq.1`, { headers: serviceHeaders(e.serviceKey) })).json())[0];
+      const min = new Date(Date.now() - 5 * 366 * 86400_000).toISOString().slice(0, 10);
+      let from = typeof body.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.from) ? body.from : min;
+      if (from < min) from = min;
+      if (from > st.start_date) return json({ points: [] });
+      const back = new Date(Date.parse(from + "T00:00:00Z") - 10 * 86400_000).toISOString().slice(0, 10);
+      const end = new Date(Date.parse(st.start_date + "T00:00:00Z") + 86400_000);
+      const [c, fx] = await Promise.all([fetchChart(st.benchmark_symbol, back), st.benchmark_currency === "EUR" ? null : fetchEcb([st.benchmark_currency], back)]);
+      const rates = (fx?.rates ?? []).sort((a, b) => a.date.localeCompare(b.date));
+      let j = -1;
+      const points: { date: string; eur: number }[] = [];
+      for (const p of c.prices) {
+        while (j + 1 < rates.length && rates[j + 1].date <= p.date) j++;
+        const r = st.benchmark_currency === "EUR" ? 1 : rates[j]?.rate;
+        if (!r || p.date > end.toISOString().slice(0, 10)) continue;
+        points.push({ date: p.date, eur: p.close / r });
+      }
+      return json({ symbol: st.benchmark_symbol, start: st.start_date, points: points.filter((p) => p.date >= from) });
+    }
+    const who = await caller(req);
+    if (!who) return json({ error: "Please sign in" }, 401);
     if (body.action === "search") {
       const q = String(body.q ?? "").trim();
       if (q.length < 1) return json({ results: [] });

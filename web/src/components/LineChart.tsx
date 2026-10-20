@@ -4,6 +4,8 @@ export interface Series {
   name: string;
   color: string;
   dashed?: boolean;
+  /** the benchmark series: extended before the challenge start by PortfolioChart */
+  benchmark?: boolean;
   points: { x: string; y: number }[]; // x = YYYY-MM-DD
 }
 

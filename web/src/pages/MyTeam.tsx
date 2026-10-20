@@ -147,12 +147,12 @@ function Portfolio({ d }: { d: any }) {
 
       <div className="card">
         <h3>Your portfolio value vs MSCI World</h3>
-        <PortfolioChart rebase
+        <PortfolioChart
           title="Total return of the team compared with the MSCI World"
           yFormat={(v) => pct(v, 1)}
           series={[
             { name: "Your team", color: "#7aa2ff", points: d.nav.map((n: any) => ({ x: n.date, y: Number(n.nav_eur) / cap - 1 })) },
-            { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, points: d.bench.map((b: any) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) },
+            { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, benchmark: true, points: d.bench.map((b: any) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) },
           ]}
         />
       </div>

@@ -7,7 +7,12 @@ import AuthPanel from "../components/AuthPanel";
 const SPONSOR_URL = "https://wefocusbuddy.com";
 
 /** Logos of the participating associations: add { name, logo, url } entries (logo files in web/public/partners/). */
-const PARTNERS: { name: string; logo: string; url?: string }[] = [];
+const PARTNERS: { name: string; short: string; logo: string; url?: string }[] = [
+  { name: "Imperial College London", short: "Imperial", logo: "imperial.png" },
+  { name: "Starting Finance Club Guido Carli (Luiss)", short: "Luiss Guido Carli", logo: "guido-carli.png" },
+  { name: "Amsterdam", short: "Amsterdam", logo: "amsterdam.png" },
+  { name: "Starting Finance Club Bicocca", short: "Milano-Bicocca", logo: "bicocca.png" },
+];
 
 function Partners() {
   return (
@@ -18,8 +23,10 @@ function Partners() {
       ) : (
         <div className="partners-logos">
           {PARTNERS.map((p) => {
-            const img = <img src={`${import.meta.env.BASE_URL}partners/${p.logo}`} alt={p.name} loading="lazy" />;
-            return p.url ? <a key={p.name} href={p.url} target="_blank" rel="noreferrer" title={p.name}>{img}</a> : <span key={p.name} title={p.name}>{img}</span>;
+            const inner = <><span className="logo-tile"><img src={`${import.meta.env.BASE_URL}partners/${p.logo}`} alt={p.name} loading="lazy" /></span><span className="logo-name">{p.short}</span></>;
+            return p.url
+              ? <a key={p.name} className="partner" href={p.url} target="_blank" rel="noreferrer" title={p.name}>{inner}</a>
+              : <span key={p.name} className="partner" title={p.name}>{inner}</span>;
           })}
         </div>
       )}

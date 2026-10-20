@@ -439,7 +439,7 @@ function SettingsTab() {
           <div><label htmlFor="s2">Risk-free rate (annual, e.g. 0.02)</label><input id="s2" value={cur.risk_free_annual} onChange={(e) => set("risk_free_annual", e.target.value)} /></div>
           <div><label htmlFor="s3">Short stop threshold (0.5 = +50%)</label><input id="s3" value={cur.stop_threshold} onChange={(e) => set("stop_threshold", e.target.value)} /></div>
           <div><label htmlFor="s4">Benchmark symbol</label><input id="s4" value={cur.benchmark_symbol} onChange={(e) => set("benchmark_symbol", e.target.value)} /></div>
-          <div><label htmlFor="s5">Benchmark currency</label><input id="s5" value={cur.benchmark_currency} onChange={(e) => set("benchmark_currency", e.target.value.toUpperCase())} /></div>
+          <div><label htmlFor="s5">Benchmark currency (of its listing: SWDA.L is in GBP)</label><input id="s5" value={cur.benchmark_currency} onChange={(e) => set("benchmark_currency", e.target.value.toUpperCase())} /></div>
           <div><label htmlFor="s6">Start date</label><input id="s6" type="date" value={cur.start_date} onChange={(e) => set("start_date", e.target.value)} /></div>
           <div><label htmlFor="s7">End date</label><input id="s7" type="date" value={cur.end_date} onChange={(e) => set("end_date", e.target.value)} /></div>
           <div><label htmlFor="s8">Regulation PDF link</label><input id="s8" value={cur.regulation_url ?? ""} onChange={(e) => set("regulation_url", e.target.value || null)} placeholder="https://…" /></div>
