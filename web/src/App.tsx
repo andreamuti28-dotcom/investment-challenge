@@ -6,6 +6,7 @@ import Home from "./pages/Home";
 import Leaderboard from "./pages/Leaderboard";
 import MyTeam from "./pages/MyTeam";
 import Admin from "./pages/Admin";
+import ResetPassword from "./pages/ResetPassword";
 import { Cookies, Privacy } from "./pages/Legal";
 import CookieBanner from "./components/CookieBanner";
 import AuthPanel from "./components/AuthPanel";
@@ -55,6 +56,12 @@ export default function App() {
     return () => window.removeEventListener("ic-consent", t);
   }, [loc.pathname]);
   useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
+  useEffect(() => {
+    if (window.location.hash.includes("type=recovery") && loc.pathname !== "/reset-password") nav("/reset-password", { replace: true });
+    const { data } = supabase.auth.onAuthStateChange((e) => { if (e === "PASSWORD_RECOVERY") nav("/reset-password", { replace: true }); });
+    return () => data.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={heroVars}>
@@ -81,12 +88,13 @@ export default function App() {
           </div>
         </header>
       )}
-      <main className={landing || loc.pathname === "/login" ? "bleed" : ""}>
+      <main className={landing || loc.pathname === "/login" || loc.pathname === "/reset-password" ? "bleed" : ""}>
         {!configured && <div className="notice err">Supabase is not configured: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (see README).</div>}
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/team" element={<Guard need="team"><MyTeam /></Guard>} />
           <Route path="/admin" element={<Guard need="admin"><Admin /></Guard>} />
           <Route path="/admin/team/:id" element={<Guard need="admin"><AdminTeamView /></Guard>} />

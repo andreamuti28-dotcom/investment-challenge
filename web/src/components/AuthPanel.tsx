@@ -4,10 +4,10 @@ import { callFunction, errText, supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { Notice } from "./ui";
 
-type Mode = "signin" | "register";
+type Mode = "signin" | "register" | "forgot";
 type Role = "president" | "member";
 
-/** White sign-in / registration card shown over the hero image. */
+/** Sign-in / registration / password recovery card shown over the hero image. */
 export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   const { session, isAdmin, team } = useAuth();
   const nav = useNavigate();
@@ -19,17 +19,18 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   const [code, setCode] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
 
   if (session) {
     return (
       <div className="auth-panel auth-welcome" id="access">
-        <div className="eyebrow" style={{ color: "#26324a" }}>Signed in</div>
+        <div className="eyebrow">Signed in</div>
         <div className="who" style={{ margin: "8px 0 4px" }}>{team ? team.name : "Organiser"}</div>
         <p className="sub">{session.user.email}{team ? ` · ${team.role}` : ""}</p>
         <div className="stack">
           {team && <Link className="btn primary" to="/team">Open my portfolio</Link>}
           {isAdmin && <Link className="btn primary" to="/admin">Open the admin panel</Link>}
-          <Link className="btn secondary" style={{ width: "100%", color: "#0b0e14", borderColor: "#cfd5de" }} to="/leaderboard">See the leaderboard</Link>
+          <Link className="btn secondary" style={{ width: "100%" }} to="/leaderboard">See the leaderboard</Link>
           <button className="linklike" onClick={() => supabase.auth.signOut()}>Sign out</button>
         </div>
       </div>
@@ -42,6 +43,15 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
     setBusy(false);
     if (error) return setErr(error.message === "Invalid login credentials" ? "Wrong e-mail or password." : error.message);
     nav("/team");
+  }
+
+  async function sendReset() {
+    setBusy(true); setErr("");
+    const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    setBusy(false);
+    if (error) return setErr(/rate limit/i.test(error.message) ? "Too many requests: try again in a few minutes." : error.message);
+    setSent(true);
   }
 
   async function register() {
@@ -61,7 +71,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   return (
     <div className="auth-panel" id="access">
       <div className="auth-tabs" role="tablist">
-        <button role="tab" aria-selected={mode === "signin"} className={mode === "signin" ? "on" : ""} onClick={() => { setMode("signin"); setErr(""); }}>Sign in</button>
+        <button role="tab" aria-selected={mode !== "register"} className={mode !== "register" ? "on" : ""} onClick={() => { setMode("signin"); setErr(""); }}>Sign in</button>
         <button role="tab" aria-selected={mode === "register"} className={mode === "register" ? "on" : ""} onClick={() => { setMode("register"); setErr(""); }}>Register</button>
       </div>
       <Notice kind="err">{err}</Notice>
@@ -69,10 +79,26 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
       {mode === "signin" ? (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); signIn(); }}>
           <div><label htmlFor="si-em">E-mail</label><input id="si-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-          <div><label htmlFor="si-pw">Password</label><input id="si-pw" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+          <div>
+            <div className="label-row"><label htmlFor="si-pw">Password</label><button type="button" className="linklike" onClick={() => { setMode("forgot"); setErr(""); setSent(false); }}>Forgot password?</button></div>
+            <input id="si-pw" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
           <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-          <p className="sub" style={{ margin: 0 }}>Forgot your password? Ask the organiser for a new one.</p>
         </form>
+      ) : mode === "forgot" ? (
+        sent ? (
+          <div className="stack">
+            <Notice kind="ok">If an account exists for <b>{email.trim()}</b>, you will receive an e-mail with a link to choose a new password. Check the spam folder too.</Notice>
+            <button type="button" className="linklike" onClick={() => { setMode("signin"); setSent(false); }}>← Back to sign in</button>
+          </div>
+        ) : (
+          <form className="stack" onSubmit={(e) => { e.preventDefault(); sendReset(); }}>
+            <p className="sub" style={{ margin: 0 }}>Enter the e-mail you registered with: we will send you a link to set a new password.</p>
+            <div><label htmlFor="fp-em">E-mail</label><input id="fp-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            <button type="submit" disabled={busy}>{busy ? "Sending…" : "Send the reset link"}</button>
+            <button type="button" className="linklike" onClick={() => { setMode("signin"); setErr(""); }}>← Back to sign in</button>
+          </form>
+        )
       ) : (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); register(); }}>
           <div>
@@ -97,7 +123,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
             </div>
           )}
           <button type="submit" disabled={busy}>{busy ? "Creating your account…" : role === "president" ? "Register as president" : "Join my team"}</button>
-          <p className="sub" style={{ margin: 0 }}>By registering you accept the <Link to="/privacy" style={{ color: "#26324a" }}>privacy notice</Link>.</p>
+          <p className="sub" style={{ margin: 0 }}>By registering you accept the <Link to="/privacy">privacy notice</Link>.</p>
         </form>
       )}
     </div>
