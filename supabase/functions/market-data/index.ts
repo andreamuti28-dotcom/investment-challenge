@@ -33,6 +33,9 @@ Deno.serve(async (req) => {
           currency: v.currency,
           price_divisor: v.priceDivisor,
           quote_type: "EQUITY",
+          // used to execute orders at the close of the right trading day
+          ...(v.timezone ? { exchange_tz: v.timezone } : {}),
+          ...(v.closeTime ? { close_time: v.closeTime } : {}),
         }),
       });
       if (!r.ok) return json({ error: `Could not save instrument: ${await r.text()}` }, 500);

@@ -42,6 +42,8 @@ export interface Order {
   side: Side | null;
   quantity: number | null; // target total quantity for open/change
   createdAt: string;
+  /** date whose close executes the order (missing: legacy order, first close of its month) */
+  execDate?: string | null;
 }
 export interface Transfer {
   id: string;
@@ -50,6 +52,8 @@ export interface Transfer {
   currency: string;
   eurAmount: number;
   createdAt: string;
+  /** date whose ECB rate executes the transfer (missing: first rate of its month) */
+  execDate?: string | null;
 }
 export interface PriceRow {
   symbol: string;
@@ -270,6 +274,8 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
 
   const months = [...input.months].sort((a, b) => a.n - b.n);
   const monthByN = new Map(months.map((m) => [m.n, m]));
+  const execDateOf = (x: { execDate?: string | null; monthN: number }): string | undefined =>
+    x.execDate ?? monthByN.get(x.monthN)?.startDate;
   const monthOf = (d: string): number => {
     let k = months[0]?.n ?? 1;
     for (const m of months) if (m.startDate <= d) k = m.n;
@@ -359,14 +365,14 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
     let ops = 0;
     const tOrders = input.orders
       .filter((o) => o.teamId === team.id)
-      .sort((a, b) => a.monthN - b.monthN || a.createdAt.localeCompare(b.createdAt));
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const tTransfers = input.transfers
       .filter((t) => t.teamId === team.id)
-      .sort((a, b) => a.monthN - b.monthN || a.createdAt.localeCompare(b.createdAt));
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const orderState = new Map<string, OrderUpdate>();
     for (const o of tOrders) {
       orderState.set(o.id, { id: o.id, status: "pending", executedDate: null, executedPrice: null, rejectReason: null });
-      if (!monthByN.has(o.monthN)) {
+      if (!execDateOf(o)) {
         orderState.set(o.id, { id: o.id, status: "rejected", executedDate: null, executedPrice: null, rejectReason: "unknown month" });
       } else if (!ccyOf.has(o.symbol)) {
         orderState.set(o.id, { id: o.id, status: "rejected", executedDate: null, executedPrice: null, rejectReason: "unknown instrument" });
@@ -374,7 +380,7 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
     }
     const trState = new Map<string, TransferUpdate>();
     for (const t of tTransfers) {
-      const bad = t.currency.toUpperCase() === "EUR" || !t.eurAmount || !monthByN.has(t.monthN);
+      const bad = t.currency.toUpperCase() === "EUR" || !t.eurAmount || !execDateOf(t);
       trState.set(t.id, {
         id: t.id,
         status: bad ? "rejected" : "pending",
@@ -408,7 +414,7 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
         exitDate: null,
         exitPrice: null,
         exitReason: null,
-        openMonth: ord.monthN,
+        openMonth: monthOf(d),
         closeMonth: null,
         orderId: ord.id,
         lastPrice: null,
@@ -456,11 +462,11 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       const due = tOrders.filter((o) => {
         const st = orderState.get(o.id)!;
         if (st.status !== "pending") return false;
-        const m = monthByN.get(o.monthN)!;
-        return m.startDate <= d && closeOn(o.symbol, d) !== undefined;
+        return execDateOf(o)! <= d && closeOn(o.symbol, d) !== undefined;
       });
       const rank: Record<Action, number> = { close: 0, change: 1, open: 2 };
-      due.sort((a, b) => rank[a.action] - rank[b.action]);
+      // chronological: the order placed first is executed first (same close price for all)
+      due.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || rank[a.action] - rank[b.action]);
       for (const o of due) {
         const p = closeOn(o.symbol, d)!;
         const st = orderState.get(o.id)!;
@@ -509,10 +515,9 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       for (const t of tTransfers) {
         const st = trState.get(t.id)!;
         if (st.status !== "pending") continue;
-        const m = monthByN.get(t.monthN)!;
         const c = t.currency.toUpperCase();
         const r = fxOn(c, d);
-        if (m.startDate <= d && r !== undefined) {
+        if (execDateOf(t)! <= d && r !== undefined) {
           addCash("EUR", -t.eurAmount, d, "transfer", `convert ${t.eurAmount} EUR into ${c} @ ${r}`);
           if (!cash.has(c)) cash.set(c, 0);
           addCash(c, t.eurAmount * r, d, "transfer", `from ${t.eurAmount} EUR @ ${r}`);
@@ -613,9 +618,9 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
     }
     for (const o of tOrders) {
       const st = orderState.get(o.id)!;
-      const m = monthByN.get(o.monthN);
-      if (st.status === "pending" && m && addDays(m.startDate, 5) < asOf) {
-        warn(`${team.name}: order ${o.action} ${o.symbol} (month ${o.monthN}) still not executed: no price available`);
+      const ed = execDateOf(o);
+      if (st.status === "pending" && ed && addDays(ed, 5) < asOf) {
+        warn(`${team.name}: order ${o.action} ${o.symbol} (due ${ed}) still not executed: no price available`);
       }
     }
 

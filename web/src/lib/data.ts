@@ -50,12 +50,10 @@ export async function must<T>(p: PromiseLike<{ data: T | null; error: any }>): P
   return data as T;
 }
 
-export async function loadCalendar(): Promise<{ settings: Settings; months: Month[]; openMonth: Month | null }> {
-  const [settings, months, open] = await Promise.all([
+export async function loadCalendar(): Promise<{ settings: Settings; months: Month[] }> {
+  const [settings, months] = await Promise.all([
     must(supabase.from("challenge_settings").select("*").eq("id", 1).single()),
     must(supabase.from("challenge_months").select("*").order("n")),
-    supabase.rpc("open_order_month"),
   ]);
-  const om = open.data as Month | null;
-  return { settings: settings as unknown as Settings, months: months as unknown as Month[], openMonth: om && om.n ? om : null };
+  return { settings: settings as unknown as Settings, months: months as unknown as Month[] };
 }

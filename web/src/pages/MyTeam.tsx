@@ -3,7 +3,7 @@ import { callFunction, errText, supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { loadCalendar, must, useLoad } from "../lib/data";
 import { date, dateTime, eur, num, pct, signClass } from "../lib/format";
-import { Countdown, Loading, Notice, Stat, Tabs } from "../components/ui";
+import { Loading, Notice, Stat, Tabs } from "../components/ui";
 import { LineChart } from "../components/LineChart";
 
 interface Position {
@@ -14,15 +14,19 @@ interface Position {
 interface Order {
   id: string; month_n: number; symbol: string; action: "open" | "close" | "change"; side: string | null; target_quantity: number | null;
   status: string; reject_reason: string | null; executed_date: string | null; executed_price: number | null; created_at: string;
+  exec_date: string | null; cutoff_at: string | null;
 }
-interface Transfer { id: string; month_n: number; currency: string; eur_amount: number; status: string; rate: number | null; executed_date: string | null; reject_reason: string | null }
+interface Transfer {
+  id: string; month_n: number; currency: string; eur_amount: number; status: string; rate: number | null; executed_date: string | null;
+  reject_reason: string | null; exec_date: string | null; cutoff_at: string | null; created_at: string;
+}
 interface Instrument { symbol: string; name: string | null; exchange: string | null; currency: string }
 
 const CURRENCIES = ["USD", "GBP", "CHF", "JPY", "CAD", "AUD", "HKD", "SEK", "NOK", "DKK", "PLN", "KRW", "INR", "BRL", "SGD", "ZAR", "MXN", "CNY", "ILS", "TRY", "CZK", "HUF", "NZD"];
 
 export default function MyTeam() {
   const { team } = useAuth();
-  const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "account">("portfolio");
+  const [tab, setTab] = useState<"portfolio" | "orders" | "history">("portfolio");
   const q = useLoad(async () => {
     const [cal, pos, sub, orders, transfers, nav, bench, met, instr, fx] = await Promise.all([
       loadCalendar(),
@@ -58,23 +62,14 @@ export default function MyTeam() {
 
   return (
     <>
-      <div className="row spread">
-        <div>
-          <div className="eyebrow">Competition {team!.competition}</div>
-          <h1 style={{ fontSize: 38 }}>{team!.name}</h1>
-        </div>
-        {d.openMonth && (
-          <div className="card" style={{ margin: 0, padding: "10px 16px" }}>
-            <div className="small muted">Orders for {d.openMonth.label} close in</div>
-            <div style={{ fontFamily: "var(--serif)", fontSize: 22 }}><Countdown to={d.openMonth.order_deadline} /></div>
-          </div>
-        )}
+      <div>
+        <div className="eyebrow">Competition {team!.competition}</div>
+        <h1 style={{ fontSize: 38 }}>{team!.name}</h1>
       </div>
-      <Tabs value={tab} onChange={setTab} items={[["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["account", "Account"]]} />
+      <Tabs value={tab} onChange={setTab} items={[["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"]]} />
       {tab === "portfolio" && <Portfolio d={d} />}
       {tab === "orders" && <Orders d={d} reload={q.reload} />}
       {tab === "history" && <History d={d} />}
-      {tab === "account" && <Account />}
     </>
   );
 }
@@ -155,11 +150,14 @@ function Portfolio({ d }: { d: any }) {
   );
 }
 
+const editable = (cutoff: string | null) => !!cutoff && Date.parse(cutoff) > Date.now();
+const ACTION_LABEL: Record<string, string> = { open: "Open", change: "Change", close: "Close all" };
+
 function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
-  const om = d.openMonth;
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[] | null>(null);
   const [sel, setSel] = useState<{ symbol: string; name: string; exchange: string; currency: string; lastPrice: number | null } | null>(null);
+  const [timing, setTiming] = useState<{ exec_date: string; cutoff_at: string } | null>(null);
   const [action, setAction] = useState<"open" | "change" | "close">("open");
   const [side, setSide] = useState<"long" | "short">("long");
   const [qty, setQty] = useState("");
@@ -168,20 +166,26 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const [tc, setTc] = useState("USD");
   const [ta, setTa] = useState("");
 
+  // holdings now, plus the effect of pending orders in the order they were placed
   const held = useMemo(() => {
     const m = new Map<string, { side: string; quantity: number; pending: boolean }>();
     for (const p of d.positions as Position[]) if (!p.exit_date) m.set(p.symbol, { side: p.side, quantity: Number(p.quantity), pending: false });
-    const earlier = (d.orders as Order[]).filter((o) => o.status === "pending" && om && o.month_n < om.n).sort((a, b) => a.month_n - b.month_n);
-    for (const o of earlier) {
+    const pend = (d.orders as Order[]).filter((o) => o.status === "pending").sort((a, b) => a.created_at.localeCompare(b.created_at));
+    for (const o of pend) {
       if (o.action === "close") m.delete(o.symbol);
       else m.set(o.symbol, { side: o.side!, quantity: Number(o.target_quantity), pending: true });
     }
     return m;
-  }, [d, om]);
+  }, [d]);
 
-  const thisMonth: Order[] = om ? d.orders.filter((o: Order) => o.month_n === om.n && o.status === "pending") : [];
-  const transfers: Transfer[] = om ? d.transfers.filter((t: Transfer) => t.month_n === om.n && t.status === "pending") : [];
+  const pending: Order[] = (d.orders as Order[]).filter((o) => o.status === "pending");
+  const transfers: Transfer[] = (d.transfers as Transfer[]).filter((t) => t.status === "pending");
+  const over = new Date().toISOString().slice(0, 10) > d.settings.end_date;
 
+  async function loadTiming(symbol: string) {
+    const { data } = await supabase.rpc("order_timing", { p_symbol: symbol });
+    setTiming(Array.isArray(data) && data[0] ? data[0] : null);
+  }
   async function search() {
     if (!query.trim()) return;
     setBusy(true); setMsg(null); setResults(null);
@@ -198,6 +202,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
       setAction(h ? "change" : "open");
       if (h) { setSide(h.side as any); setQty(String(h.quantity)); } else setQty("");
       setResults(null);
+      await loadTiming(r.instrument.symbol);
     } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
     setBusy(false);
   }
@@ -206,22 +211,32 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     const h = held.get(symbol)!;
     setSel({ symbol, name: i?.name ?? symbol, exchange: i?.exchange ?? "", currency: i?.currency ?? "", lastPrice: null });
     setAction(a); setSide(h.side as any); setQty(String(h.quantity)); setMsg(null);
+    loadTiming(symbol);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function submit() {
     if (!sel) return;
     setBusy(true); setMsg(null);
-    const { error } = await supabase.rpc("place_order", {
+    const { data, error } = await supabase.rpc("place_order", {
       p_symbol: sel.symbol, p_action: action, p_side: action === "close" ? null : side, p_quantity: action === "close" ? null : Number(qty),
     });
     setBusy(false);
     if (error) return setMsg({ kind: "err", text: errText(error) });
-    setMsg({ kind: "ok", text: `Order saved: ${action} ${action !== "close" ? `${side} ${qty} ` : ""}${sel.symbol}. It will be executed at the close of the first trading day of ${om.label}.` });
-    setSel(null); setQty(""); setQuery("");
+    const o = data as Order;
+    setMsg({
+      kind: "ok",
+      text: `Order saved: ${ACTION_LABEL[action].toLowerCase()} ${action !== "close" ? `${side} ${qty} ` : ""}${sel.symbol}. It will be executed at the closing price of ${date(o.exec_date)}. You can cancel it until ${dateTime(o.cutoff_at)}.`,
+    });
+    setSel(null); setQty(""); setQuery(""); setTiming(null);
+    await reload();
+  }
+  async function cancel(fn: "cancel_order" | "cancel_transfer", id: string) {
+    const { error } = await supabase.rpc(fn, { p_id: id });
+    setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: "Cancelled." });
     await reload();
   }
 
-  if (!om) return <Notice kind="warn">The order window is closed: the challenge has entered its final month or has ended.</Notice>;
+  if (over) return <Notice kind="warn">The challenge has ended: orders are closed.</Notice>;
   const ccy = sel?.currency ?? "";
   const indicative = sel?.lastPrice && Number(qty) > 0 ? Number(qty) * sel.lastPrice : null;
   const fx = d.fxLatest[ccy];
@@ -229,9 +244,10 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   return (
     <>
       <Notice kind="warn">
-        Orders for <b>{om.label}</b> can be placed, changed or cancelled until <b>{dateTime(om.order_deadline)}</b>. They are executed at the
-        closing price of the first trading day of the month on each stock's exchange, with no commissions. A short is closed automatically if the
-        price rises {pct(d.settings.stop_threshold, 0).replace("+", "")} above entry: the loss is capped at that level.
+        You can trade on any trading day. An order is executed at the <b>closing price of the day you place it</b>, on the stock's own
+        exchange, with no commissions. Orders placed after that exchange has closed, or at the weekend, are executed at the close of the next
+        trading day; orders placed before {date(d.settings.start_date)} at the close of the first day. Until the close you can cancel or replace
+        an order. A short is closed automatically if the price rises {pct(d.settings.stop_threshold, 0).replace("+", "")} above entry.
       </Notice>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
 
@@ -255,9 +271,14 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
           {sel && (
             <div className="stack" style={{ marginTop: 16 }}>
               <div><b>{sel.symbol}</b> · {sel.name} <span className="muted small">{sel.exchange} · {sel.currency}{sel.lastPrice ? ` · last ${num(sel.lastPrice, 4)}` : ""}</span></div>
+              {timing && (
+                <p className="small" style={{ margin: 0 }}>
+                  Execution at the close of <b>{date(timing.exec_date)}</b>. You can change or cancel it until {dateTime(timing.cutoff_at)}.
+                </p>
+              )}
               <div className="seg" role="group" aria-label="Action">
                 {(held.has(sel.symbol) ? (["change", "close"] as const) : (["open"] as const)).map((a) => (
-                  <button key={a} type="button" className={action === a ? "on" : ""} onClick={() => setAction(a)}>{a === "open" ? "Open" : a === "change" ? "Change" : "Close all"}</button>
+                  <button key={a} type="button" className={action === a ? "on" : ""} onClick={() => setAction(a)}>{ACTION_LABEL[a]}</button>
                 ))}
               </div>
               {action !== "close" && (
@@ -274,25 +295,28 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
               )}
               {action === "change" && <p className="small muted">Write the quantity you want to hold after the change (e.g. you hold 1,000 and sell 400: write 600). You can also switch side.</p>}
               {indicative !== null && action !== "close" && (
-                <p className="small muted">Indicative value: {ccy === "EUR" ? eur(indicative) : <>{num(indicative)} {ccy}{fx ? ` ≈ ${eur(indicative / fx)}` : ""}</>} (final price set at execution).</p>
+                <p className="small muted">Indicative value: {ccy === "EUR" ? eur(indicative) : <>{num(indicative)} {ccy}{fx ? ` ≈ ${eur(indicative / fx)}` : ""}</>} (final price: the close of the execution day).</p>
               )}
               <div className="row">
                 <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>Save order</button>
-                <button className="secondary" onClick={() => setSel(null)}>Cancel</button>
+                <button className="secondary" onClick={() => { setSel(null); setTiming(null); }}>Cancel</button>
               </div>
             </div>
           )}
         </div>
 
         <div className="card">
-          <h3>Pending orders for {om.label}</h3>
-          {thisMonth.length === 0 ? <p className="muted">None yet. Positions you do not touch are kept as they are.</p> : (
+          <h3>Pending orders</h3>
+          {pending.length === 0 ? <p className="muted">None. Positions you do not touch are kept as they are.</p> : (
             <div className="table-wrap"><table>
-              <thead><tr><th>Stock</th><th>Action</th><th>Side</th><th className="num">Quantity</th><th /></tr></thead>
-              <tbody>{thisMonth.map((o) => (
+              <thead><tr><th>Stock</th><th>Action</th><th>Side</th><th className="num">Quantity</th><th>Close of</th><th /></tr></thead>
+              <tbody>{pending.map((o) => (
                 <tr key={o.id}><td>{o.symbol}</td><td>{o.action}</td><td>{o.side ? <span className={`badge ${o.side}`}>{o.side}</span> : "–"}</td>
                   <td className="num">{o.target_quantity ? num(o.target_quantity, 0) : "all"}</td>
-                  <td><button className="danger small" onClick={async () => { const { error } = await supabase.rpc("cancel_order", { p_id: o.id }); if (error) setMsg({ kind: "err", text: errText(error) }); await reload(); }}>Cancel</button></td></tr>
+                  <td>{date(o.exec_date)}</td>
+                  <td>{editable(o.cutoff_at)
+                    ? <button className="danger small" title={`Until ${dateTime(o.cutoff_at)}`} onClick={() => cancel("cancel_order", o.id)}>Cancel</button>
+                    : <span className="badge pending" title="The market has closed: the order is executed at that close">locked</span>}</td></tr>
               ))}</tbody>
             </table></div>
           )}
@@ -311,22 +335,23 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
 
       <div className="card">
         <h3>Currency transfers (optional)</h3>
-        <p className="muted small">Convert euro into another currency sub-portfolio at the ECB rate of the first trading day of {om.label} (Art. 3). A negative amount converts back into euro. Not required to buy foreign stocks.</p>
+        <p className="muted small">Convert euro into another currency sub-portfolio at the ECB reference rate of the day (transfers placed after 14:00 Rome time, or at the weekend, use the next day's rate). A negative amount converts back into euro. Not required to buy foreign stocks.</p>
         <div className="row">
           <div className="field narrow"><label htmlFor="tc">Currency</label><select id="tc" value={tc} onChange={(e) => setTc(e.target.value)}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></div>
           <div className="field narrow"><label htmlFor="ta">EUR amount</label><input id="ta" inputMode="decimal" value={ta} onChange={(e) => setTa(e.target.value.replace(/[^0-9.\-]/g, ""))} /></div>
           <button style={{ alignSelf: "flex-end" }} disabled={!Number(ta)} onClick={async () => {
-            const { error } = await supabase.rpc("place_transfer", { p_currency: tc, p_eur_amount: Number(ta) });
-            if (error) setMsg({ kind: "err", text: errText(error) }); else { setTa(""); setMsg({ kind: "ok", text: "Transfer saved." }); }
+            const { data, error } = await supabase.rpc("place_transfer", { p_currency: tc, p_eur_amount: Number(ta) });
+            if (error) setMsg({ kind: "err", text: errText(error) });
+            else { setTa(""); setMsg({ kind: "ok", text: `Transfer saved: ECB rate of ${date((data as Transfer).exec_date)}.` }); }
             await reload();
           }}>Add transfer</button>
         </div>
         {transfers.length > 0 && (
           <div className="table-wrap" style={{ marginTop: 12 }}><table>
-            <thead><tr><th>Currency</th><th className="num">EUR amount</th><th /></tr></thead>
+            <thead><tr><th>Currency</th><th className="num">EUR amount</th><th>ECB rate of</th><th /></tr></thead>
             <tbody>{transfers.map((t) => (
-              <tr key={t.id}><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td>
-                <td><button className="danger small" onClick={async () => { await supabase.rpc("cancel_transfer", { p_id: t.id }); await reload(); }}>Cancel</button></td></tr>
+              <tr key={t.id}><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td><td>{date(t.exec_date)}</td>
+                <td>{editable(t.cutoff_at) ? <button className="danger small" onClick={() => cancel("cancel_transfer", t.id)}>Cancel</button> : <span className="badge pending">locked</span>}</td></tr>
             ))}</tbody>
           </table></div>
         )}
@@ -342,9 +367,9 @@ function History({ d }: { d: any }) {
       <div className="card">
         <h3>All orders</h3>
         <div className="table-wrap"><table>
-          <thead><tr><th>Month</th><th>Stock</th><th>Action</th><th>Side</th><th className="num">Quantity</th><th>Status</th><th>Executed</th><th className="num">Price</th><th>Note</th></tr></thead>
+          <thead><tr><th>Placed</th><th>Stock</th><th>Action</th><th>Side</th><th className="num">Quantity</th><th>Status</th><th>Executed</th><th className="num">Price</th><th>Note</th></tr></thead>
           <tbody>{(d.orders as Order[]).map((o) => (
-            <tr key={o.id}><td>{d.months.find((m: any) => m.n === o.month_n)?.label}</td><td>{o.symbol}</td><td>{o.action}</td><td>{o.side ?? "–"}</td>
+            <tr key={o.id}><td className="small">{dateTime(o.created_at)}</td><td>{o.symbol}</td><td>{o.action}</td><td>{o.side ?? "–"}</td>
               <td className="num">{o.target_quantity ? num(o.target_quantity, 0) : "all"}</td><td><span className={`badge ${o.status}`}>{o.status}</span></td>
               <td>{date(o.executed_date)}</td><td className="num">{num(o.executed_price, 4)}</td><td className="small">{o.reject_reason}</td></tr>
           ))}</tbody>
@@ -368,37 +393,14 @@ function History({ d }: { d: any }) {
         <h3>Currency transfers</h3>
         {d.transfers.length === 0 ? <p className="muted">None.</p> : (
           <div className="table-wrap"><table>
-            <thead><tr><th>Month</th><th>Currency</th><th className="num">EUR amount</th><th>Status</th><th className="num">ECB rate</th><th>Executed</th></tr></thead>
+            <thead><tr><th>Placed</th><th>Currency</th><th className="num">EUR amount</th><th>Status</th><th className="num">ECB rate</th><th>Executed</th></tr></thead>
             <tbody>{(d.transfers as Transfer[]).map((t) => (
-              <tr key={t.id}><td>{d.months.find((m: any) => m.n === t.month_n)?.label}</td><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td>
+              <tr key={t.id}><td className="small">{dateTime(t.created_at)}</td><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td>
                 <td><span className={`badge ${t.status}`}>{t.status}</span></td><td className="num">{num(t.rate, 4)}</td><td>{date(t.executed_date)}</td></tr>
             ))}</tbody>
           </table></div>
         )}
       </div>
     </>
-  );
-}
-
-function Account() {
-  const [p1, setP1] = useState("");
-  const [p2, setP2] = useState("");
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  return (
-    <div className="card" style={{ maxWidth: 460 }}>
-      <h3>Change password</h3>
-      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-      <form className="stack" onSubmit={async (e) => {
-        e.preventDefault();
-        if (p1.length < 10) return setMsg({ kind: "err", text: "Use at least 10 characters." });
-        if (p1 !== p2) return setMsg({ kind: "err", text: "The two passwords do not match." });
-        const { error } = await supabase.auth.updateUser({ password: p1 });
-        if (error) setMsg({ kind: "err", text: error.message }); else { setMsg({ kind: "ok", text: "Password updated." }); setP1(""); setP2(""); }
-      }}>
-        <div><label htmlFor="p1">New password</label><input id="p1" type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} /></div>
-        <div><label htmlFor="p2">Repeat</label><input id="p2" type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} /></div>
-        <button type="submit">Update password</button>
-      </form>
-    </div>
   );
 }

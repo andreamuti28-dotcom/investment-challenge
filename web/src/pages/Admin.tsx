@@ -4,7 +4,7 @@ import { must, useLoad, type Month, type Settings } from "../lib/data";
 import { date, dateTime, download, num, pct, toCsv } from "../lib/format";
 import { Loading, Notice, Tabs } from "../components/ui";
 
-type Tab = "teams" | "orders" | "data" | "settings" | "engine" | "export";
+type Tab = "teams" | "accounts" | "orders" | "data" | "settings" | "engine" | "visits" | "export";
 
 export default function Admin() {
   const [tab, setTab] = useState<Tab>("teams");
@@ -12,8 +12,10 @@ export default function Admin() {
     <>
       <div className="eyebrow">Organiser</div>
       <h1 style={{ fontSize: 38 }}>Admin panel</h1>
-      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["orders", "Orders"], ["data", "Market data"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["export", "Export"]]} />
+      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["accounts", "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
       {tab === "teams" && <Teams />}
+      {tab === "accounts" && <Accounts />}
+      {tab === "visits" && <Visits />}
       {tab === "orders" && <Orders />}
       {tab === "data" && <MarketData />}
       {tab === "settings" && <SettingsTab />}
@@ -24,26 +26,39 @@ export default function Admin() {
 }
 
 // ------------------------------------------------------------------ teams
+async function refreshResults() {
+  // ranks and results of the other teams change when a team is removed
+  try { await callFunction("engine", { skipFetch: true }); } catch { /* the scheduled run will catch up */ }
+}
+
 function Teams() {
   const q = useLoad(async () => {
-    const [teams, contacts] = await Promise.all([
+    const [teams, contacts, access] = await Promise.all([
       must(supabase.from("teams").select("*").order("competition").order("name")),
       must(supabase.from("team_contacts").select("*")),
+      must(supabase.from("team_access").select("team_id,code,updated_at")),
     ]);
     const c = Object.fromEntries((contacts as any[]).map((x) => [x.team_id, x]));
-    return (teams as any[]).map((t) => ({ ...t, contact: c[t.id] ?? {} }));
+    const a = Object.fromEntries((access as any[]).map((x) => [x.team_id, x]));
+    return (teams as any[]).map((t) => ({ ...t, contact: c[t.id] ?? {}, access: a[t.id] ?? null }));
   });
   const [form, setForm] = useState({ name: "", competition: "A", university: "", contact_name: "", contact_email: "" });
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: ReactNode } | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function addTeam() {
-    setMsg(null);
+    setMsg(null); setBusy(true);
     const { data, error } = await supabase.from("teams").insert({ name: form.name.trim(), competition: form.competition, university: form.university.trim() || null }).select().single();
-    if (error) return setMsg({ kind: "err", text: errText(error) });
+    if (error) { setBusy(false); return setMsg({ kind: "err", text: errText(error) }); }
     await supabase.from("team_contacts").insert({ team_id: data.id, contact_name: form.contact_name || null, contact_email: form.contact_email || null });
+    try {
+      const r = await callFunction("admin", { action: "set_team_code", teamId: data.id });
+      setMsg({ kind: "ok", text: <>Team <b>{data.name}</b> created. Access code: <span className="secret">{r.code}</span> (always visible in the table below).</> });
+    } catch (e) {
+      setMsg({ kind: "err", text: `Team created, but the access code could not be generated: ${errText(e)}. Use "Generate code" in the table.` });
+    }
     setForm({ name: "", competition: "A", university: "", contact_name: "", contact_email: "" });
-    setMsg({ kind: "ok", text: `Team ${data.name} created. Now create its account below.` });
+    setBusy(false);
     await q.reload();
   }
 
@@ -54,22 +69,21 @@ function Teams() {
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <div className="card">
         <h3>Add a team</h3>
+        <p className="muted small">An access code is generated automatically. Only you can see it: send it to the team, who will use it to sign in.</p>
         <div className="row">
           <div className="field"><label htmlFor="tn">Team name</label><input id="tn" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
           <div className="field narrow"><label htmlFor="tcomp">Competition</label><select id="tcomp" value={form.competition} onChange={(e) => setForm({ ...form, competition: e.target.value })}><option value="A">A · University</option><option value="B">B · International</option></select></div>
           <div className="field"><label htmlFor="tu">University / composition</label><input id="tu" value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })} /></div>
           <div className="field"><label htmlFor="tcn">Contact name</label><input id="tcn" value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} /></div>
           <div className="field"><label htmlFor="tce">Contact email</label><input id="tce" type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} /></div>
-          <button style={{ alignSelf: "flex-end" }} disabled={!form.name.trim()} onClick={addTeam}>Add team</button>
+          <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim()} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
         </div>
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Comp.</th><th>University</th><th>Contact</th><th className="num">Violations</th><th /></tr></thead>
+          <thead><tr><th>Team</th><th>Comp.</th><th>University</th><th>Contact</th><th>Access code</th><th className="num">Violations</th><th /></tr></thead>
           <tbody>
-            {q.data.map((t: any) => (
-              <TeamRow key={t.id} t={t} open={open === t.id} toggle={() => setOpen(open === t.id ? null : t.id)} reload={q.reload} setMsg={setMsg} />
-            ))}
+            {q.data.map((t: any) => <TeamRow key={t.id} t={t} reload={q.reload} setMsg={setMsg} />)}
           </tbody>
         </table>
       </div>
@@ -77,51 +91,131 @@ function Teams() {
   );
 }
 
-function TeamRow({ t, open, toggle, reload, setMsg }: any) {
-  const [users, setUsers] = useState<any[] | null>(null);
-  const [email, setEmail] = useState(t.contact.contact_email ?? "");
+function TeamRow({ t, reload, setMsg }: any) {
+  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  async function loadUsers() {
-    try { setUsers((await callFunction("admin", { action: "list_team_users", teamId: t.id })).users ?? []); } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+  const code: string | null = t.access?.code ?? null;
+  async function setCode() {
+    if (code && !window.confirm(`Replace the access code of ${t.name}? The old code stops working immediately and the team is signed out.`)) return;
+    setBusy(true);
+    try {
+      const r = await callFunction("admin", { action: "set_team_code", teamId: t.id });
+      setMsg({ kind: "ok", text: <>New access code for <b>{t.name}</b>: <span className="secret">{r.code}</span></> });
+      setShow(true);
+      await reload();
+    } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+    setBusy(false);
+  }
+  async function deleteTeam() {
+    const typed = window.prompt(`This permanently deletes ${t.name}: its access code, orders, positions and results. It cannot be undone.\n\nType the team name to confirm:`);
+    if (typed === null) return;
+    if (typed.trim() !== t.name) return setMsg({ kind: "err", text: "The name did not match: nothing was deleted." });
+    setBusy(true);
+    try {
+      await callFunction("admin", { action: "delete_team", teamId: t.id });
+      setMsg({ kind: "ok", text: `${t.name} deleted.` });
+      await reload();
+      refreshResults();
+    } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+    setBusy(false);
   }
   return (
-    <>
-      <tr>
-        <td><b>{t.name}</b></td><td>{t.competition}</td><td>{t.university}</td>
-        <td className="small">{t.contact.contact_name}<div className="muted">{t.contact.contact_email}</div></td>
-        <td className="num">
-          <input aria-label={`Violations of ${t.name}`} style={{ width: 70, minHeight: 32 }} type="number" min={0} defaultValue={t.violations}
-            onBlur={async (e) => { const v = Number(e.target.value); if (v !== t.violations) { await supabase.from("teams").update({ violations: v }).eq("id", t.id); reload(); } }} />
-        </td>
-        <td><button className="secondary small" onClick={() => { toggle(); if (!open) loadUsers(); }}>{open ? "Close" : "Accounts"}</button></td>
-      </tr>
-      {open && (
-        <tr><td colSpan={6} style={{ background: "#faf8f3" }}>
-          <div className="stack">
-            <div className="row">
-              <div className="field"><label htmlFor={`em-${t.id}`}>Create a login for this team</label><input id={`em-${t.id}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="referent@university.edu" /></div>
-              <button style={{ alignSelf: "flex-end" }} disabled={busy || !email} onClick={async () => {
-                setBusy(true);
-                try {
-                  const r = await callFunction("admin", { action: "create_team_user", teamId: t.id, email });
-                  setMsg({ kind: "ok", text: <>Account created for <b>{r.email}</b>. Temporary password: <span className="secret">{r.password}</span> Send it to the team now: it is not shown again.</> });
-                  loadUsers();
-                } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
-                setBusy(false);
-              }}>Create account</button>
-            </div>
-            {users === null ? <span className="muted small">Loading accounts…</span> : users.length === 0 ? <span className="muted small">No accounts yet.</span> : (
-              <table><tbody>{users.map((u) => (
-                <tr key={u.id}><td>{u.email}</td><td className="small muted">last sign-in {u.lastSignIn ? dateTime(u.lastSignIn) : "never"}</td>
-                  <td><button className="secondary small" onClick={async () => {
-                    try { const r = await callFunction("admin", { action: "reset_password", userId: u.id }); setMsg({ kind: "ok", text: <>New temporary password for {u.email}: <span className="secret">{r.password}</span></> }); }
-                    catch (e) { setMsg({ kind: "err", text: errText(e) }); }
-                  }}>Reset password</button></td></tr>
-              ))}</tbody></table>
-            )}
+    <tr>
+      <td><b>{t.name}</b></td><td>{t.competition}</td><td>{t.university}</td>
+      <td className="small">{t.contact.contact_name}<div className="muted">{t.contact.contact_email}</div></td>
+      <td>
+        {code ? (
+          <div className="code-cell">
+            <span className="secret">{show ? code : "••••-••••-••••"}</span>
+            <button className="secondary small" onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button>
+            <button className="secondary small" onClick={async () => { try { await navigator.clipboard.writeText(code); setMsg({ kind: "ok", text: `Code of ${t.name} copied.` }); } catch { setShow(true); } }}>Copy</button>
+            <button className="secondary small" disabled={busy} onClick={setCode}>New code</button>
           </div>
-        </td></tr>
-      )}
+        ) : (
+          <button className="small" disabled={busy} onClick={setCode}>Generate code</button>
+        )}
+      </td>
+      <td className="num">
+        <input aria-label={`Violations of ${t.name}`} style={{ width: 70, minHeight: 32 }} type="number" min={0} defaultValue={t.violations}
+          onBlur={async (e) => { const v = Number(e.target.value); if (v !== t.violations) { await supabase.from("teams").update({ violations: v }).eq("id", t.id); reload(); } }} />
+      </td>
+      <td><button className="danger small" disabled={busy} onClick={deleteTeam}>Delete team</button></td>
+    </tr>
+  );
+}
+
+// ------------------------------------------------------------------ accounts
+function Accounts() {
+  const q = useLoad(async () => (await callFunction("admin", { action: "list_users" })).users as any[]);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  if (q.error) return <Notice kind="err">{q.error}</Notice>;
+  if (!q.data) return <Loading />;
+  return (
+    <>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      <p className="muted small">Every account that can sign in. Deleting a team access account leaves the team and its results in place: the team can no longer sign in until you generate a new code in the Teams tab. To remove a team with all its data, use "Delete team" there.</p>
+      <div className="table-wrap"><table>
+        <thead><tr><th>Account</th><th>Type</th><th>Team</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
+        <tbody>{q.data.map((u) => (
+          <tr key={u.id}>
+            <td>{u.email ?? <span className="muted">access code</span>}{u.self && <span className="badge" style={{ marginLeft: 6 }}>you</span>}</td>
+            <td><span className={`badge ${u.kind === "admin" ? "warning" : ""}`}>{u.kind}</span></td>
+            <td>{u.team ?? "–"}</td>
+            <td className="small">{date(u.createdAt)}</td>
+            <td className="small">{u.lastSignIn ? dateTime(u.lastSignIn) : "never"}</td>
+            <td>{!u.self && (
+              <button className="danger small" onClick={async () => {
+                const label = u.email ?? `the access account of ${u.team}`;
+                if (!window.confirm(`Delete ${label}? It cannot be undone.`)) return;
+                try { await callFunction("admin", { action: "delete_user", userId: u.id }); setMsg({ kind: "ok", text: `${label} deleted.` }); await q.reload(); }
+                catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+              }}>Delete</button>
+            )}</td>
+          </tr>
+        ))}</tbody>
+      </table></div>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ visits
+function Visits() {
+  const q = useLoad(async () => {
+    const { data, error } = await supabase.rpc("visit_stats");
+    if (error) throw new Error(error.message);
+    return data as any;
+  });
+  if (q.error) return <Notice kind="err">{q.error}</Notice>;
+  if (!q.data) return <Loading />;
+  const s = q.data;
+  return (
+    <>
+      <p className="muted small">Anonymous and aggregate: only visitors who accepted the statistics cookies are counted, one visit per browser session. Useful for the sponsor report.</p>
+      <div className="card dark"><div className="grid cols-3">
+        <div className="stat"><div className="label">Visits</div><div className="value">{num(s.visits, 0)}</div></div>
+        <div className="stat"><div className="label">Unique visitors</div><div className="value">{num(s.visitors, 0)}</div></div>
+        <div className="stat"><div className="label">Visits, last 30 days</div><div className="value">{num(s.last30, 0)}</div></div>
+      </div></div>
+      <div className="grid cols-2">
+        <div className="card">
+          <h3>By day (last 60 days)</h3>
+          {s.daily.length === 0 ? <p className="muted">No visits yet.</p> : (
+            <div className="table-wrap" style={{ maxHeight: 360, overflowY: "auto" }}><table>
+              <thead><tr><th>Day</th><th className="num">Visits</th><th className="num">Visitors</th></tr></thead>
+              <tbody>{[...s.daily].reverse().map((r: any) => <tr key={r.day}><td>{date(r.day)}</td><td className="num">{r.visits}</td><td className="num">{r.visitors}</td></tr>)}</tbody>
+            </table></div>
+          )}
+        </div>
+        <div className="card">
+          <h3>Landing pages</h3>
+          {s.pages.length === 0 ? <p className="muted">No visits yet.</p> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Page</th><th className="num">Visits</th></tr></thead>
+              <tbody>{s.pages.map((r: any) => <tr key={r.path}><td>{r.path}</td><td className="num">{r.visits}</td></tr>)}</tbody>
+            </table></div>
+          )}
+        </div>
+      </div>
     </>
   );
 }
@@ -159,10 +253,10 @@ function Orders() {
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Month</th><th>Stock</th><th>Action</th><th>Side</th><th className="num">Qty</th><th>Status</th><th>Executed</th><th className="num">Price</th><th>Note</th><th /></tr></thead>
+          <thead><tr><th>Team</th><th>Placed</th><th>Close of</th><th>Stock</th><th>Action</th><th>Side</th><th className="num">Qty</th><th>Status</th><th>Executed</th><th className="num">Price</th><th>Note</th><th /></tr></thead>
           <tbody>{rows.map((o) => (
             <tr key={o.id}>
-              <td>{d.teamName[o.team_id]}</td><td>{o.month_n}</td><td>{o.symbol}</td><td>{o.action}</td><td>{o.side ?? "–"}</td>
+              <td>{d.teamName[o.team_id]}</td><td className="small">{dateTime(o.created_at)}</td><td>{date(o.exec_date)}</td><td>{o.symbol}</td><td>{o.action}</td><td>{o.side ?? "–"}</td>
               <td className="num">{o.target_quantity ? num(o.target_quantity, 0) : "all"}</td>
               <td><span className={`badge ${o.status}`}>{o.status}</span>{o.reject_source === "admin" && <span className="small muted"> (admin)</span>}</td>
               <td>{date(o.executed_date)}</td><td className="num">{num(o.executed_price, 4)}</td><td className="small">{o.reject_reason}</td>
@@ -180,9 +274,9 @@ function Orders() {
       <h3 style={{ marginTop: 24 }}>Currency transfers</h3>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Month</th><th>Currency</th><th className="num">EUR</th><th>Status</th><th className="num">Rate</th><th /></tr></thead>
+          <thead><tr><th>Team</th><th>ECB rate of</th><th>Currency</th><th className="num">EUR</th><th>Status</th><th className="num">Rate</th><th /></tr></thead>
           <tbody>{d.transfers.map((t: any) => (
-            <tr key={t.id}><td>{d.teamName[t.team_id]}</td><td>{t.month_n}</td><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td>
+            <tr key={t.id}><td>{d.teamName[t.team_id]}</td><td>{date(t.exec_date)}</td><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td>
               <td><span className={`badge ${t.status}`}>{t.status}</span></td><td className="num">{num(t.rate, 4)}</td>
               <td>{t.reject_source !== "admin" && t.status !== "cancelled"
                 ? <button className="danger small" onClick={() => setOrder("transfer_orders", t.id, { status: "rejected", reject_source: "admin", reject_reason: "Rejected by the organiser" })}>Reject</button>
@@ -287,19 +381,6 @@ function MarketData() {
 }
 
 // ------------------------------------------------------------------ settings
-function romeOffset(localIso: string): string {
-  const dt = new Date(localIso + "Z");
-  const part = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Rome", timeZoneName: "shortOffset" }).formatToParts(dt).find((p) => p.type === "timeZoneName")?.value ?? "GMT+1";
-  const m = part.match(/GMT([+-]\d+)(?::(\d+))?/);
-  const h = m ? Number(m[1]) : 1;
-  return `${h >= 0 ? "+" : "-"}${String(Math.abs(h)).padStart(2, "0")}:${m?.[2] ?? "00"}`;
-}
-const toRomeInput = (iso: string) => {
-  const s = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-  return s.replace(" ", "T");
-};
-const fromRomeInput = (local: string) => `${local}:59${romeOffset(local + ":59")}`;
-
 function SettingsTab() {
   const q = useLoad(async () => ({
     settings: (await must(supabase.from("challenge_settings").select("*").eq("id", 1).single())) as Settings,
@@ -338,9 +419,9 @@ function SettingsTab() {
       </div>
       <div className="card">
         <h3>Calendar</h3>
-        <p className="muted small">Order deadlines are in Rome time. Orders of a month are executed at the first close on or after its start date; month-end valuation uses the end date.</p>
+        <p className="muted small">Months are used for the month-end valuation and the monthly statistics (Sharpe, Sortino, drawdown). Orders are executed every trading day at the close.</p>
         <div className="table-wrap"><table>
-          <thead><tr><th>#</th><th>Label</th><th>Start</th><th>End (valuation)</th><th>Order deadline (Rome)</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>Label</th><th>Start</th><th>End (valuation)</th><th /></tr></thead>
           <tbody>{q.data.months.map((m) => <MonthRow key={m.n} m={m} onSaved={(t) => { setMsg(t); q.reload(); }} />)}</tbody>
         </table></div>
       </div>
@@ -349,16 +430,15 @@ function SettingsTab() {
 }
 
 function MonthRow({ m, onSaved }: { m: Month; onSaved: (x: { kind: "ok" | "err"; text: string }) => void }) {
-  const [v, setV] = useState({ start_date: m.start_date, end_date: m.end_date, deadline: toRomeInput(m.order_deadline) });
-  const dirty = v.start_date !== m.start_date || v.end_date !== m.end_date || v.deadline !== toRomeInput(m.order_deadline);
+  const [v, setV] = useState({ start_date: m.start_date, end_date: m.end_date });
+  const dirty = v.start_date !== m.start_date || v.end_date !== m.end_date;
   return (
     <tr>
       <td>{m.n}</td><td>{m.label}</td>
       <td><input aria-label="start" type="date" value={v.start_date} onChange={(e) => setV({ ...v, start_date: e.target.value })} /></td>
       <td><input aria-label="end" type="date" value={v.end_date} onChange={(e) => setV({ ...v, end_date: e.target.value })} /></td>
-      <td><input aria-label="deadline" type="datetime-local" value={v.deadline} onChange={(e) => setV({ ...v, deadline: e.target.value })} /></td>
       <td><button className="small" disabled={!dirty} onClick={async () => {
-        const { error } = await supabase.from("challenge_months").update({ start_date: v.start_date, end_date: v.end_date, order_deadline: fromRomeInput(v.deadline) }).eq("n", m.n);
+        const { error } = await supabase.from("challenge_months").update({ start_date: v.start_date, end_date: v.end_date }).eq("n", m.n);
         onSaved(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: `${m.label} saved.` });
       }}>Save</button></td>
     </tr>

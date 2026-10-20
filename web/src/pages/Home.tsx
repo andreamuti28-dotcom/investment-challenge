@@ -1,13 +1,13 @@
 import { Link } from "react-router-dom";
 import { loadCalendar, useLoad } from "../lib/data";
-import { date, dateTime, eur } from "../lib/format";
-import { Countdown, Loading, Notice } from "../components/ui";
+import { date, eur } from "../lib/format";
+import { Loading, Notice } from "../components/ui";
 
 export default function Home() {
   const { data, error } = useLoad(loadCalendar);
   if (error) return <Notice kind="err">{error}</Notice>;
   if (!data) return <Loading />;
-  const { settings: s, months, openMonth } = data;
+  const { settings: s } = data;
   return (
     <>
       <section className="hero">
@@ -22,23 +22,21 @@ export default function Home() {
         </div>
       </section>
 
-      {openMonth && (
-        <div className="card row spread">
-          <div>
-            <div className="eyebrow">Order window open</div>
-            <h3 style={{ margin: "4px 0" }}>Orders for {openMonth.label}</h3>
-            <span className="muted">Deadline {dateTime(openMonth.order_deadline)}. Execution at the close of the first trading day of the month.</span>
-          </div>
-          <div className="stat"><div className="label">Time left</div><div className="value"><Countdown to={openMonth.order_deadline} /></div></div>
+      <div className="card row spread">
+        <div>
+          <div className="eyebrow">Trading</div>
+          <h3 style={{ margin: "4px 0" }}>Every trading day, at the closing price</h3>
+          <span className="muted">Orders are executed at the close of the day they are placed, on each stock's own exchange.</span>
         </div>
-      )}
+        <Link to="/login" className="btn secondary">Team login</Link>
+      </div>
 
       <div className="grid cols-2">
         <div className="card">
           <h2>How it works</h2>
           <div className="stack">
             <p>Each university enters a team. Teams can buy or sell short any listed stock in the world. Derivatives, ETFs and funds are not allowed.</p>
-            <p>Portfolios can be rebalanced once a month. Orders placed before the deadline are executed at the closing price of the first trading day of the following month, with no commissions.</p>
+            <p>Teams can trade on any trading day. An order is executed at the closing price of the day it is placed, on the stock's own exchange, with no commissions. Orders placed after that exchange has closed, or at the weekend, are executed at the close of the next trading day.</p>
             <p>A short position is closed automatically when the stock rises 50% above its entry price: the loss on that position is capped at 50%. There are no margin calls.</p>
             <p>Each currency is tracked in its own sub-portfolio and converted into euro at the ECB reference rate. Dividends are reinvested on long positions and charged on short positions.</p>
             <p><b>The winner is the team with the highest total return in euro.</b> Sharpe, Sortino, volatility, beta, tracking error, drawdown and concentration are published for every team.</p>
@@ -52,9 +50,9 @@ export default function Home() {
           <h2>Key dates</h2>
           <div className="timeline">
             <div><div className="when">{date(s.registration_deadline)}</div><div><b>Registration deadline.</b> Universities confirm their teams.</div></div>
-            <div><div className="when">{date(months[0]?.order_deadline)}</div><div><b>Initial portfolio.</b> Orders for December must be placed by 23:59 (Rome).</div></div>
+            <div><div className="when">Before the start</div><div><b>Initial portfolio.</b> Teams can already place orders: they are executed at the close of {date(s.start_date)}.</div></div>
             <div><div className="when">{date(s.start_date)}</div><div><b>Start.</b> Initial portfolios executed at the closing price.</div></div>
-            <div><div className="when">Monthly</div><div><b>Rebalancing.</b> Orders by the last trading day of each month.</div></div>
+            <div><div className="when">Every trading day</div><div><b>Trading.</b> Buy, sell or short at the closing price of the day.</div></div>
             <div><div className="when">{date(s.end_date)}</div><div><b>End.</b> Final valuation in euro at the ECB reference rate.</div></div>
           </div>
           <h3 style={{ marginTop: 20 }}>Two competitions</h3>

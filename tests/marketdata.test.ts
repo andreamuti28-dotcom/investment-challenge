@@ -50,3 +50,15 @@ test("ECB csvdata parsing, including quoted titles with commas", () => {
     { currency: "GBP", date: "2026-12-01", rate: 0.8512 },
   ]);
 });
+
+test("Yahoo chart: exchange time zone and closing time (local)", () => {
+  const nyse = { chart: { error: null, result: [{
+    meta: { currency: "USD", symbol: "AAPL", instrumentType: "EQUITY", exchangeTimezoneName: "America/New_York", gmtoffset: -18000,
+      currentTradingPeriod: { regular: { start: Date.parse("2026-12-03T14:30:00Z") / 1000, end: Date.parse("2026-12-03T21:00:00Z") / 1000, gmtoffset: -18000 } } },
+    timestamp: [], indicators: { quote: [{ close: [] }] },
+  }] } };
+  const c = parseChart(nyse);
+  assert.equal(c.timezone, "America/New_York");
+  assert.equal(c.closeTime, "16:00");
+  assert.equal(parseChart(vod).closeTime, "16:30");
+});

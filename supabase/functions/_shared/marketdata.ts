@@ -68,6 +68,10 @@ export interface ParsedChart {
   exchange: string;
   name: string;
   lastPrice: number | null;
+  /** IANA time zone of the exchange, e.g. America/New_York */
+  timezone: string | null;
+  /** regular-session closing time in exchange local time, "HH:MM" */
+  closeTime: string | null;
   prices: { date: string; close: number }[];
   dividends: { date: string; value: number }[];
   splits: { date: string; value: number }[];
@@ -112,6 +116,8 @@ export function parseChart(json: any, nowMs = Date.now()): ParsedChart {
     exchange: meta.fullExchangeName ?? meta.exchangeName ?? "",
     name: meta.longName ?? meta.shortName ?? meta.symbol ?? "",
     lastPrice: typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice / divisor : null,
+    timezone: typeof meta.exchangeTimezoneName === "string" ? meta.exchangeTimezoneName : null,
+    closeTime: reg?.end ? new Date((reg.end + Number(reg.gmtoffset ?? off)) * 1000).toISOString().slice(11, 16) : null,
     prices: [...byDate].sort().map(([date, close]) => ({ date, close })),
     dividends,
     splits,
@@ -137,6 +143,8 @@ export async function validateSymbol(symbol: string) {
     priceDivisor: c.divisor,
     quoteType: c.instrumentType,
     lastPrice: c.lastPrice,
+    timezone: c.timezone,
+    closeTime: c.closeTime,
   };
 }
 

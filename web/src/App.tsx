@@ -1,4 +1,5 @@
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { useAuth } from "./lib/auth";
 import { configured, supabase } from "./lib/supabase";
 import Home from "./pages/Home";
@@ -6,6 +7,9 @@ import Leaderboard from "./pages/Leaderboard";
 import Login from "./pages/Login";
 import MyTeam from "./pages/MyTeam";
 import Admin from "./pages/Admin";
+import { Cookies, Privacy } from "./pages/Legal";
+import CookieBanner from "./components/CookieBanner";
+import { openCookiePreferences, trackVisit } from "./lib/consent";
 import type { ReactNode } from "react";
 
 function Guard({ need, children }: { need: "team" | "admin"; children: ReactNode }) {
@@ -20,6 +24,14 @@ function Guard({ need, children }: { need: "team" | "admin"; children: ReactNode
 export default function App() {
   const { session, isAdmin, team } = useAuth();
   const nav = useNavigate();
+  const loc = useLocation();
+  useEffect(() => {
+    const t = () => { trackVisit(loc.pathname).catch(() => {}); };
+    t();
+    window.addEventListener("ic-consent", t);
+    return () => window.removeEventListener("ic-consent", t);
+  }, [loc.pathname]);
+  useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
   return (
     <>
       <header className="topbar">
@@ -53,19 +65,24 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/team" element={<Guard need="team"><MyTeam /></Guard>} />
           <Route path="/admin" element={<Guard need="admin"><Admin /></Guard>} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/cookies" element={<Cookies />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       <footer>
         <div className="inner">
           <span>Interuniversity Investment Challenge 2026/2027 · Organiser: Andrea Muti · Sponsored by <a href="https://wefocusbuddy.com" target="_blank" rel="noreferrer">WeFocusBuddy</a></span>
-          <span>
+          <span className="footer-links">
+            <NavLink to="/privacy">Privacy</NavLink>
+            <NavLink to="/cookies">Cookie Policy</NavLink>
+            <button className="linklike" onClick={openCookiePreferences}>Cookie preferences</button>
             <a href="https://andreamuti.com" target="_blank" rel="noreferrer">andreamuti.com</a>
-            {" · "}
             <a href="https://www.linkedin.com/in/andrea-muti-24416b2a1" target="_blank" rel="noreferrer">LinkedIn</a>
           </span>
         </div>
       </footer>
+      <CookieBanner />
     </>
   );
 }

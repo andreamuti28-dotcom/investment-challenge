@@ -50,6 +50,7 @@ export function toEngineInput(db: any): EngineInput {
       side: o.side,
       quantity: num(o.target_quantity),
       createdAt: o.created_at,
+      execDate: o.exec_date ?? null,
     })),
     transfers: db.transfers.map((t: any) => ({
       id: t.id,
@@ -58,6 +59,7 @@ export function toEngineInput(db: any): EngineInput {
       currency: t.currency,
       eurAmount: Number(t.eur_amount),
       createdAt: t.created_at,
+      execDate: t.exec_date ?? null,
     })),
     prices: db.prices.map((p: any[]) => ({ symbol: p[0], date: p[1], close: Number(p[2]), source: p[3] })),
     events: db.events.map((e: any) => ({ symbol: e.symbol, date: e.date, type: e.type, value: Number(e.value), source: e.source })),

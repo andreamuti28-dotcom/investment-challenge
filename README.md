@@ -2,28 +2,28 @@
 
 Piattaforma completa per la sfida: sito per i team (ordini, portafoglio, sotto-portafogli per valuta), classifica pubblica A e B, pannello admin e motore di calcolo automatico che gira due volte al giorno.
 
-Costo: zero (Supabase Free, Cloudflare Pages Free, GitHub). Paghi solo un eventuale dominio.
+Costo: zero (Supabase Free, GitHub Pages, GitHub). Paghi solo un eventuale dominio.
 
 ## Come è fatta
 
 | Parte | Dove gira | Cosa fa |
 |---|---|---|
-| `web/` | Cloudflare Pages | Sito React: home, classifica, area team, admin |
+| `web/` | GitHub Pages | Sito React: home, classifica, area team, admin, privacy e cookie |
 | `supabase/migrations/` | Supabase (Postgres) | Tabelle, permessi (RLS), funzioni per ordini e motore |
 | `supabase/functions/engine` | Supabase Edge Functions | Scarica prezzi (Yahoo) e cambi (BCE), ricalcola tutto, avvisa su Telegram |
 | `supabase/functions/market-data` | Supabase Edge Functions | Ricerca e validazione titoli per i team |
-| `supabase/functions/admin` | Supabase Edge Functions | Creazione account dei team |
+| `supabase/functions/admin` | Supabase Edge Functions | Codici di accesso dei team, elenco ed eliminazione di account e team |
 | `supabase/functions/_shared/core.ts` | ovunque | Il motore di calcolo, puro e testato |
 | `.github/workflows/` | GitHub Actions | Pubblicazione automatica su Supabase, piano B del motore |
 
-Regole implementate: ordini eseguiti alla chiusura del primo giorno di borsa del mese sulla borsa del titolo; stop short a +50% con perdita bloccata al 50% anche in caso di gap (lo stop viene controllato prima degli ordini); sotto-portafogli per valuta con cassa che può essere negativa, senza margini e interessi; dividendi accreditati sulle long e addebitati sulle short; split; conversione in euro ai cambi BCE; benchmark SWDA in USD convertito in euro; classifica per rendimento totale in euro, separata per competizione, con Sharpe, Sortino, volatilità, beta, tracking error, max drawdown, Calmar, operazioni, peso massimo, HHI, esposizione valutaria e violazioni.
+Regole implementate: ordini eseguiti al prezzo di chiusura del giorno in cui vengono inseriti, sulla borsa del titolo (dopo la chiusura di quella borsa, o nel weekend, al close del giorno di borsa successivo; prima dell'avvio al close del primo giorno); fino alla chiusura l'ordine si può annullare; trasferimenti di valuta al cambio BCE del giorno (entro le 14:00 di Roma); stop short a +50% con perdita bloccata al 50% anche in caso di gap (lo stop viene controllato prima degli ordini); sotto-portafogli per valuta con cassa che può essere negativa, senza margini e interessi; dividendi accreditati sulle long e addebitati sulle short; split; conversione in euro ai cambi BCE; benchmark SWDA in USD convertito in euro; classifica per rendimento totale in euro, separata per competizione, con Sharpe, Sortino, volatilità, beta, tracking error, max drawdown, Calmar, operazioni, peso massimo, HHI, esposizione valutaria e violazioni.
 
 Il motore ricalcola sempre tutto da zero partendo da ordini, prezzi e cambi. Ogni correzione (un prezzo inserito a mano, un ordine respinto) si propaga da sola alla corsa successiva.
 
 ## Test già superati
 
-- `npm test`: 11 test sul motore, tra cui il caso di accettazione con 30 controlli identici al file Excel dell'organizzatore (NAV, sotto-portafogli, stop, dividendi, cambi, benchmark) e tutte le metriche di rischio confrontate con l'Excel.
-- `npm run test:db`: 32 controlli sul database (permessi, regole degli ordini, scadenze, transazione di scrittura) e un giro completo del motore con dati Yahoo e BCE simulati.
+- `npm test`: 17 test sul motore, tra cui l'esecuzione al close del giorno (festivi, ordini dello stesso giorno in sequenza, cambi del giorno), tra cui il caso di accettazione con 30 controlli identici al file Excel dell'organizzatore (NAV, sotto-portafogli, stop, dividendi, cambi, benchmark) e tutte le metriche di rischio confrontate con l'Excel.
+- `npm run test:db`: 52 controlli sul database (orari di chiusura per borsa e fuso, blocco dopo la chiusura, permessi sui codici di accesso, statistiche visite, transazione di scrittura) e un giro completo del motore con dati Yahoo e BCE simulati.
 - Le funzioni server superano il controllo dei tipi di Deno, e l'autotest gira anche dentro la funzione pubblicata (Admin > Engine > Run self-test).
 
 Da qui non è stato possibile chiamare Yahoo Finance e la BCE dal vivo: il primo controllo reale lo fai al passo 9.
@@ -95,7 +95,7 @@ Cloudflare Pages > il tuo progetto > Custom domains: aggiungi il dominio nuovo o
 1. Accedi con il tuo account admin e vai su Admin > Engine > "Run self-test": devono risultare 30 controlli PASS.
 2. Admin > Market data > "Check & add" con `VOD.L`: deve rispondere con nome, valuta GBP e ultimo prezzo in sterline. È la prova che Yahoo Finance risponde ai server di Supabase.
 3. Admin > Engine > "Run engine": deve terminare con stato ok (o warning con avvisi leggibili) e la riga "ECB: … rates".
-4. Crea un team di prova in Admin > Teams, crea il suo account, entra con quell'account in una finestra anonima, cerca un titolo e salva un ordine. Poi cancellalo, ed elimina il team di prova dal database (Table editor > teams) prima del 1° dicembre.
+4. Crea un team di prova in Admin > Teams (il codice di accesso si genera da solo), entra con quel codice in una finestra anonima, cerca un titolo e salva un ordine. Poi elimina il team di prova con "Delete team" prima del 1° dicembre.
 5. Carica il PDF del regolamento (ad esempio su andreamuti.com o Google Drive) e incolla il link in Admin > Calendar & settings > Regulation PDF link.
 
 Se al punto 2 compare "Market data unavailable", Yahoo sta rifiutando le richieste da Supabase. Il workflow "Engine (GitHub fallback)" esegue lo stesso motore da GitHub (istruzioni nel file), ma anche la ricerca titoli dei team andrebbe spostata: in quel caso serve un piccolo adattamento.
@@ -104,8 +104,10 @@ Se al punto 2 compare "Market data unavailable", Yahoo sta rifiutando le richies
 
 ## Uso durante la sfida
 
-- Dopo il 15 novembre: Admin > Teams, aggiungi ogni team (competizione A o B), poi "Accounts" > "Create account" con l'email del referente. La password temporanea compare una sola volta: inviala al team, che potrà cambiarla da My team > Account.
-- Gli ordini si chiudono da soli alla scadenza di ogni mese e vengono eseguiti dal motore. Non devi fare nulla.
+- Dopo il 15 novembre: Admin > Teams, aggiungi ogni team (competizione A o B). Il codice di accesso (formato XXXX-XXXX-XXXX) viene generato da solo ed è visibile solo a te nella colonna Access code: invialo al team, che entra con "Team login". Se un codice viene diffuso, "New code" lo sostituisce e disconnette subito il team.
+- Admin > Accounts elenca tutti gli account e permette di eliminarli; "Delete team" in Admin > Teams elimina un team con codice, ordini e risultati.
+- Gli ordini vengono eseguiti dal motore al close del giorno: non devi fare nulla.
+- Admin > Visits mostra le visite anonime (solo di chi ha accettato i cookie statistici), utili per il report allo sponsor.
 - Ogni sera ricevi il riepilogo su Telegram. Se un titolo non ha prezzi o una valuta non è pubblicata dalla BCE, inserisci il valore in Admin > Market data e premi "Run engine".
 - Violazioni (art. 13): campo Violations in Admin > Teams. Un ordine può essere respinto da Admin > Orders.
 - Il risk-free (2% di default) si cambia in Admin > Calendar & settings.

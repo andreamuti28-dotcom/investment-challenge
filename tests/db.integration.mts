@@ -19,7 +19,9 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-await db.exec(readFileSync(new URL("../supabase/migrations/20261020000000_init.sql", import.meta.url), "utf8"));
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql"]) {
+  await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
+}
 await db.exec(`
   grant usage on schema public to anon, authenticated, service_role;
   grant select, insert, update, delete on all tables in schema public to anon, authenticated, service_role;
@@ -34,7 +36,8 @@ await db.exec(`
   insert into public.teams (id,name,competition,university) values
     ('10000000-0000-0000-0000-000000000001','Bicocca','A','Milano-Bicocca'),('10000000-0000-0000-0000-000000000002','Leon','B','Mixed');
   insert into public.team_contacts values ('10000000-0000-0000-0000-000000000001','Andrea','secret@x',null);
-  insert into public.instruments (symbol,name,currency) values ('AAPL','Apple','USD'),('ENI.MI','Eni','EUR'),('XYZ.MI','XYZ','EUR');
+  insert into public.instruments (symbol,name,currency,exchange_tz,close_time) values
+    ('AAPL','Apple','USD','America/New_York','16:00'),('ENI.MI','Eni','EUR','Europe/Rome','17:30'),('XYZ.MI','XYZ','EUR',null,null);
   insert into public.instruments (symbol,name,currency,quote_type) values ('SPY','SPDR','USD','ETF');
 `);
 await db.query(`select link_team_user($1,$2)`, [U1, "10000000-0000-0000-0000-000000000001"]);
@@ -45,27 +48,77 @@ const as = async (role: string, uid: string | null, sql: string, params: unknown
   try { return await db.query(sql, params); } finally { await db.exec("reset role"); }
 };
 
-// --- open month and team orders
-const om = await as("authenticated", U1, "select * from open_order_month()");
-ok("open order month is 1 before 29/11", (om.rows[0] as any).n === 1);
+// --- execution date: close of the trading day on the stock's exchange
+const timing = async (sym: string, at: string) => {
+  const r = (await db.query(`select exec_date::text d, to_char(cutoff_at at time zone 'UTC', 'YYYY-MM-DD HH24:MI') c from order_timing($1, $2::timestamptz)`, [sym, at])).rows[0] as any;
+  return `${r.d} ${r.c}`;
+};
+ok("Milan 10:00 -> same day, cutoff 17:30 Rome", (await timing("ENI.MI", "2026-12-02 10:00+01")) === "2026-12-02 2026-12-02 16:30");
+ok("Milan 18:00 -> next day", (await timing("ENI.MI", "2026-12-02 18:00+01")).startsWith("2026-12-03 "));
+ok("Friday after close -> Monday", (await timing("ENI.MI", "2026-12-04 17:31+01")).startsWith("2026-12-07 "));
+ok("Saturday -> Monday", (await timing("ENI.MI", "2026-12-05 11:00+01")).startsWith("2026-12-07 "));
+ok("New York 21:00 Rome (15:00 NY) -> same day", (await timing("AAPL", "2026-12-02 21:00+01")) === "2026-12-02 2026-12-02 21:00");
+ok("New York 22:30 Rome (16:30 NY) -> next day", (await timing("AAPL", "2026-12-02 22:30+01")).startsWith("2026-12-03 "));
+ok("unknown exchange -> Rome 17:30 default", (await timing("XYZ.MI", "2026-12-02 17:00+01")) === "2026-12-02 2026-12-02 16:30");
+ok("before the start -> start date", (await timing("ENI.MI", "2026-10-20 10:00+02")) === "2026-12-01 2026-12-01 16:30");
+
+// --- team orders
 await as("authenticated", U1, "select place_order('AAPL','open','long',100)");
 await as("authenticated", U1, "select place_order('XYZ.MI','open','short',1000)");
 await as("authenticated", U1, "select place_order('AAPL','open','long',5)");
-const rep = await as("authenticated", U1, "select target_quantity q from orders where symbol='AAPL' and status='pending'");
-ok("same month re-open replaces pending order", rep.rows.length === 1 && Number((rep.rows[0] as any).q) === 5);
+const rep = await as("authenticated", U1, "select target_quantity q, exec_date::text d, month_n from orders where symbol='AAPL' and status='pending'");
+ok("re-open before the close replaces the pending order", rep.rows.length === 1 && Number((rep.rows[0] as any).q) === 5);
+ok("order placed before the start runs at the start close (month 1)", (rep.rows[0] as any).d === "2026-12-01" && (rep.rows[0] as any).month_n === 1);
 await as("authenticated", U1, "select place_order('AAPL','open','long',100)");
 await expectErr("close not held rejected", () => as("authenticated", U1, "select place_order('ENI.MI','close')"), /do not hold/);
 await expectErr("ETF rejected", () => as("authenticated", U1, "select place_order('SPY','open','long',1)"), /Only listed stocks/);
 await expectErr("fractional qty rejected", () => as("authenticated", U1, "select place_order('ENI.MI','open','long',1.5)"), /whole number/);
 await expectErr("unknown symbol rejected", () => as("authenticated", U1, "select place_order('ZZZ','open','long',1)"), /Unknown instrument/);
 await expectErr("no team -> rejected", () => as("authenticated", ADMIN, "select place_order('ENI.MI','open','long',1)"), /not a member/);
-// replace pending order on same symbol/month
+// locked order (market closed, engine not run yet): it is kept and later orders build on it
+await db.exec(`update orders set cutoff_at = now() - interval '1 minute' where symbol = 'AAPL' and status = 'pending'`);
+await expectErr("cancel after the close rejected", async () => {
+  const id = (await db.query(`select id from orders where symbol='AAPL' and status='pending'`)).rows[0] as any;
+  return as("authenticated", U1, "select cancel_order($1)", [id.id]);
+}, /locked/);
+await expectErr("open on a symbol with a locked open order rejected", () => as("authenticated", U1, "select place_order('AAPL','open','long',5)"), /already hold/);
+await as("authenticated", U1, "select place_order('AAPL','change','long',60)");
+const two = await db.query(`select action, status from orders where symbol='AAPL' order by created_at`);
+ok("locked order kept, change queued after it", JSON.stringify((two.rows as any[]).filter((r) => r.status === "pending").map((r) => r.action)) === '["open","change"]');
+// cancel before the close works
+const xyz = (await db.query(`select id from orders where symbol='XYZ.MI'`)).rows[0] as any;
+await as("authenticated", U1, "select cancel_order($1)", [xyz.id]);
+ok("cancel before the close", ((await db.query(`select status from orders where id=$1`, [xyz.id])).rows[0] as any).status === "cancelled");
+// after the end of the challenge
+await db.exec(`update challenge_settings set end_date = '2026-11-30'`);
+await expectErr("no orders after the end", () => as("authenticated", U2, "select place_order('ENI.MI','open','long',1)"), /challenge is over/);
+await db.exec(`update challenge_settings set end_date = '2027-05-31'`);
 await as("authenticated", U2, "select place_order('ENI.MI','open','long',10)");
-await as("authenticated", U2, "select place_order('ENI.MI','open','long',1000)");
-const u2o = await as("authenticated", U2, "select symbol, target_quantity from orders where status='pending'");
-ok("pending order replaced, team sees only its own", u2o.rows.length === 1 && Number((u2o.rows[0] as any).target_quantity) === 1000);
+const u2o = await as("authenticated", U2, "select symbol from orders where status='pending'");
+ok("team sees only its own orders", u2o.rows.length === 1);
 await as("authenticated", U2, "select place_transfer('usd', 10000)");
+const tr = await as("authenticated", U2, "select exec_date::text d from transfer_orders");
+ok("transfer gets an execution date", (tr.rows[0] as any).d === "2026-12-01");
 await expectErr("EUR transfer rejected", () => as("authenticated", U2, "select place_transfer('EUR', 5)"), /Invalid currency/);
+
+// --- access codes: organiser only
+await db.query(`insert into team_access (team_id, user_id, code) values ($1, $2, 'ABCD-EFGH-JKLM')`, ["10000000-0000-0000-0000-000000000001", U1]);
+ok("admin reads access codes", (await as("authenticated", ADMIN, "select code from team_access")).rows.length === 1);
+ok("team cannot read access codes", (await as("authenticated", U1, "select code from team_access")).rows.length === 0);
+ok("anon cannot read access codes", (await as("anon", null, "select code from team_access")).rows.length === 0);
+await expectErr("team cannot write access codes", () => as("authenticated", U2, `insert into team_access values ('10000000-0000-0000-0000-000000000002', '${U2}', 'X')`), /row-level security/);
+
+// --- anonymous visit statistics
+const V = "20000000-0000-0000-0000-000000000001";
+await as("anon", null, "select track_visit($1, '/')", [V]);
+await as("anon", null, "select track_visit($1, '/leaderboard')", [V]);
+await as("anon", null, "select track_visit($1, '/')", ["20000000-0000-0000-0000-000000000002"]);
+ok("one visit per visitor per 30 minutes", Number(((await db.query("select count(*) n from site_visits")).rows[0] as any).n) === 2);
+ok("anon cannot read visits", (await as("anon", null, "select * from site_visits")).rows.length === 0);
+await expectErr("anon cannot read stats", () => as("anon", null, "select visit_stats()"), /permission denied/);
+ok("team gets no stats", ((await as("authenticated", U1, "select visit_stats() s")).rows[0] as any).s === null);
+const st = ((await as("authenticated", ADMIN, "select visit_stats() s")).rows[0] as any).s;
+ok("admin stats", st.visits === 2 && st.visitors === 2, JSON.stringify(st));
 
 // --- RLS
 await expectErr("team cannot insert orders directly", () => as("authenticated", U1, `insert into orders (team_id,month_n,symbol,action,side,target_quantity) values ('10000000-0000-0000-0000-000000000001',1,'ENI.MI','open','long',1)`), /row-level security/);
@@ -82,20 +135,14 @@ await expectErr("team cannot call engine_input", () => as("authenticated", U1, "
 await expectErr("team cannot call engine_write", () => as("authenticated", U1, "select engine_write('{}'::jsonb)"), /permission denied/);
 await expectErr("team cannot update metrics", async () => { const r = await as("authenticated", U1, "update metrics set nav = 1 returning *"); if (!r.rows.length) throw new Error("row-level security: 0 rows"); }, /row-level security|0 rows/);
 
-// --- month 2: XYZ close + ENI open (simulate time by setting deadlines)
-await db.exec(`update challenge_months set order_deadline = now() - interval '1 day' where n = 1`);
-await as("authenticated", U1, "select place_order('XYZ.MI','close')");
-await expectErr("open on a symbol held from previous month rejected", () => as("authenticated", U1, "select place_order('AAPL','open','long',5)"), /already hold/);
-await as("authenticated", U1, "select place_order('AAPL','change','long',100)");
-await db.exec(`delete from orders where symbol='AAPL' and month_n=2`);
-await as("authenticated", U2, "select place_order('ENI.MI','change','long',1000)").catch(() => {});
-await db.exec(`delete from orders where team_id='10000000-0000-0000-0000-000000000002' and month_n=2`);
-// U2: ENI month1 order should become month-2 open in the fixture; move it
-await db.exec(`update orders set month_n = 2 where team_id='10000000-0000-0000-0000-000000000002'`);
-await expectErr("cancel after deadline rejected", async () => {
-  const id = (await db.query(`select id from orders where team_id='10000000-0000-0000-0000-000000000001' and month_n=1 limit 1`)).rows[0] as any;
-  return as("authenticated", U1, "select cancel_order($1)", [id.id]);
-}, /no longer editable/);
+// --- replace the orders with the acceptance case (legacy monthly orders: no exec_date)
+await db.exec(`delete from orders; delete from transfer_orders;`);
+const TEAM = { A1: "10000000-0000-0000-0000-000000000001", B1: "10000000-0000-0000-0000-000000000002" } as Record<string, string>;
+for (const o of fixture().orders.filter((x) => x.teamId in TEAM)) {
+  await db.query(`insert into orders (team_id, month_n, symbol, action, side, target_quantity, created_at) values ($1,$2,$3,$4,$5,$6,$7)`,
+    [TEAM[o.teamId], o.monthN, o.symbol, o.action, o.side, o.quantity, o.createdAt]);
+}
+await db.query(`insert into transfer_orders (team_id, month_n, currency, eur_amount) values ($1, 1, 'USD', 10000)`, [TEAM.B1]);
 
 // --- market data (manual, same as the acceptance fixture)
 const f = fixture();

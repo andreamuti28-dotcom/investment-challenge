@@ -7,7 +7,9 @@ const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   create schema auth; create table auth.users (id uuid primary key, email text);
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;`);
-await db.exec(readFileSync(new URL("../supabase/migrations/20261020000000_init.sql", import.meta.url), "utf8"));
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql"]) {
+  await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
+}
 await db.exec(`grant usage on schema public to service_role; grant all on all tables in schema public to service_role; grant all on all sequences in schema public to service_role;
   insert into teams (id,name,competition) values ('10000000-0000-0000-0000-000000000001','Bicocca','A'),('10000000-0000-0000-0000-000000000002','Leon','B');
   insert into instruments (symbol,currency,price_divisor) values ('AAPL','USD',1),('XYZ.MI','EUR',1),('ENI.MI','EUR',1),('VOD.L','GBP',100);
