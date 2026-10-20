@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { callFunction, errText, supabase } from "../lib/supabase";
+import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { loadCalendar, must, useLoad } from "../lib/data";
 import { date, dateTime, eur, num, pct, signClass } from "../lib/format";
@@ -25,16 +26,25 @@ interface Instrument { symbol: string; name: string | null; exchange: string | n
 
 const CURRENCIES = ["USD", "GBP", "CHF", "JPY", "CAD", "AUD", "HKD", "SEK", "NOK", "DKK", "PLN", "KRW", "INR", "BRL", "SGD", "ZAR", "MXN", "CNY", "ILS", "TRY", "CZK", "HUF", "NZD"];
 
-export default function MyTeam() {
-  const { team } = useAuth();
+/** Portfolio area. Teams see their own; the organiser opens any team with teamId and acts for it. */
+export default function MyTeam({ teamId }: { teamId?: string } = {}) {
+  const auth = useAuth();
+  const adminView = !!teamId;
+  const t = useLoad(async () => {
+    if (!teamId) return auth.team;
+    const r = await must(supabase.from("teams").select("id,name,competition,university").eq("id", teamId).single());
+    return { ...(r as any), role: "organiser" } as any;
+  }, [teamId, auth.team?.id]);
+  const team = t.data;
   const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "team" | "account">("portfolio");
   const q = useLoad(async () => {
+    if (!team) return null;
     const [cal, pos, sub, orders, transfers, nav, bench, met, instr, fx] = await Promise.all([
       loadCalendar(),
-      must(supabase.from("positions").select("*").order("entry_date")),
-      must(supabase.from("subportfolios").select("*")),
-      must(supabase.from("orders").select("*").order("created_at", { ascending: false })),
-      must(supabase.from("transfer_orders").select("*").order("created_at", { ascending: false })),
+      must(supabase.from("positions").select("*").eq("team_id", team.id).order("entry_date")),
+      must(supabase.from("subportfolios").select("*").eq("team_id", team.id)),
+      must(supabase.from("orders").select("*").eq("team_id", team.id).order("created_at", { ascending: false })),
+      must(supabase.from("transfer_orders").select("*").eq("team_id", team.id).order("created_at", { ascending: false })),
       must(supabase.from("nav_daily").select("date,nav_eur").eq("team_id", team!.id).order("date")),
       must(supabase.from("benchmark_daily").select("date,value_eur").order("date")),
       supabase.from("leaderboard").select("*").eq("team_id", team!.id).maybeSingle(),
@@ -54,24 +64,29 @@ export default function MyTeam() {
       metrics: met.data as any,
       instruments: Object.fromEntries((instr as Instrument[]).map((i) => [i.symbol, i])) as Record<string, Instrument>,
       fxLatest,
+      teamId: team.id,
+      adminView,
     };
   }, [team?.id]);
 
-  if (q.error) return <Notice kind="err">{q.error}</Notice>;
-  if (!q.data) return <Loading />;
+  if (t.error || q.error) return <Notice kind="err">{t.error ?? q.error}</Notice>;
+  if (!team || !q.data) return <Loading />;
   const d = q.data;
 
   return (
     <>
       <div className="page-head">
-        <div className="eyebrow">Competition {team!.competition} · {team!.role}</div>
-        <h1>{team!.name}</h1>
+        <div className="eyebrow">Competition {team.competition} · {adminView ? "organiser view" : team.role}</div>
+        <h1>{team.name}</h1>
+        {adminView && <p className="muted small" style={{ marginTop: 8 }}>You are acting for this team: orders you place here are recorded in its name. <Link to="/admin">Back to the admin panel</Link></p>}
       </div>
-      <Tabs value={tab} onChange={setTab} items={[["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["team", "Team"], ["account", "Account"]]} />
+      <Tabs value={tab} onChange={setTab} items={adminView
+        ? [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["team", "Team"]]
+        : [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["team", "Team"], ["account", "Account"]]} />
       {tab === "portfolio" && <Portfolio d={d} />}
       {tab === "orders" && <Orders d={d} reload={q.reload} />}
       {tab === "history" && <History d={d} />}
-      {tab === "team" && <TeamTab />}
+      {tab === "team" && <TeamTab teamId={adminView ? team.id : undefined} />}
       {tab === "account" && <Account />}
     </>
   );
@@ -161,7 +176,12 @@ function Portfolio({ d }: { d: any }) {
 }
 
 const editable = (cutoff: string | null) => !!cutoff && Date.parse(cutoff) > Date.now();
-const ACTION_LABEL: Record<string, string> = { open: "Open", change: "Change", close: "Close all" };
+/** What the order does, in plain words. */
+function describe(action: string, side: string, qty: string | number, symbol: string, heldSide?: string) {
+  if (action === "close") return `${heldSide === "short" ? "Buy back" : "Sell"} all ${symbol}`;
+  if (action === "open") return `${side === "short" ? "Sell short" : "Buy"} ${qty} ${symbol}`;
+  return `Hold ${qty} ${symbol} ${side === "short" ? "short" : "long"}`;
+}
 
 function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const [query, setQuery] = useState("");
@@ -227,21 +247,22 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   async function submit() {
     if (!sel) return;
     setBusy(true); setMsg(null);
-    const { data, error } = await supabase.rpc("place_order", {
-      p_symbol: sel.symbol, p_action: action, p_side: action === "close" ? null : side, p_quantity: action === "close" ? null : Number(qty),
-    });
+    const args = { p_symbol: sel.symbol, p_action: action, p_side: action === "close" ? null : side, p_quantity: action === "close" ? null : Number(qty) };
+    const { data, error } = d.adminView
+      ? await supabase.rpc("place_order_admin", { p_team: d.teamId, ...args })
+      : await supabase.rpc("place_order", args);
     setBusy(false);
     if (error) return setMsg({ kind: "err", text: errText(error) });
     const o = data as Order;
     setMsg({
       kind: "ok",
-      text: `Order saved: ${ACTION_LABEL[action].toLowerCase()} ${action !== "close" ? `${side} ${qty} ` : ""}${sel.symbol}. It will be executed at the closing price of ${date(o.exec_date)}. You can cancel it until ${dateTime(o.cutoff_at)}.`,
+      text: `Order saved: ${describe(action, side, qty, sel.symbol, held.get(sel.symbol)?.side)}. It will be executed at the closing price of ${date(o.exec_date)}. You can cancel it until ${dateTime(o.cutoff_at)}.`,
     });
     setSel(null); setQty(""); setQuery(""); setTiming(null);
     await reload();
   }
   async function cancel(fn: "cancel_order" | "cancel_transfer", id: string) {
-    const { error } = await supabase.rpc(fn, { p_id: id });
+    const { error } = await supabase.rpc(d.adminView ? `${fn}_admin` : fn, { p_id: id });
     setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: "Cancelled." });
     await reload();
   }
@@ -287,29 +308,56 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                   Execution at the close of <b>{date(timing.exec_date)}</b>. You can change or cancel it until {dateTime(timing.cutoff_at)}.
                 </p>
               )}
-              <div className="seg" role="group" aria-label="Action">
-                {(held.has(sel.symbol) ? (["change", "close"] as const) : (["open"] as const)).map((a) => (
-                  <button key={a} type="button" className={action === a ? "on" : ""} onClick={() => setAction(a)}>{ACTION_LABEL[a]}</button>
-                ))}
-              </div>
+              {(() => {
+                const h = held.get(sel.symbol);
+                if (!h) return (
+                  <div className="trade-choices" role="radiogroup" aria-label="Order type">
+                    <button type="button" role="radio" aria-checked={side === "long"} className={`trade-choice buy ${side === "long" ? "on" : ""}`} onClick={() => { setAction("open"); setSide("long"); }}>
+                      <b>Buy</b><small>Go long: you gain if the price rises</small>
+                    </button>
+                    <button type="button" role="radio" aria-checked={side === "short"} className={`trade-choice short ${side === "short" ? "on" : ""}`} onClick={() => { setAction("open"); setSide("short"); }}>
+                      <b>Sell short</b><small>You gain if the price falls (stop at +{Math.round(Number(d.settings.stop_threshold) * 100)}%)</small>
+                    </button>
+                  </div>
+                );
+                const other = h.side === "long" ? "short" : "long";
+                return (
+                  <>
+                    <div className="small">The team holds <span className={`badge ${h.side}`}>{h.side}</span> <b>{num(h.quantity, 0)}</b> shares{h.pending ? " (after pending orders)" : ""}.</div>
+                    <div className="trade-choices three" role="radiogroup" aria-label="Order type">
+                      <button type="button" role="radio" aria-checked={action === "close"} className={`trade-choice ${action === "close" ? "on" : ""}`} onClick={() => setAction("close")}>
+                        <b>{h.side === "short" ? "Buy back all" : "Sell all"}</b><small>Close the position</small>
+                      </button>
+                      <button type="button" role="radio" aria-checked={action === "change" && side === h.side} className={`trade-choice ${action === "change" && side === h.side ? "on" : ""}`} onClick={() => { setAction("change"); setSide(h.side as any); setQty(String(h.quantity)); }}>
+                        <b>Change quantity</b><small>{h.side === "short" ? "Short more or buy back part" : "Buy more or sell part"}</small>
+                      </button>
+                      <button type="button" role="radio" aria-checked={action === "change" && side === other} className={`trade-choice ${other === "short" ? "short" : "buy"} ${action === "change" && side === other ? "on" : ""}`} onClick={() => { setAction("change"); setSide(other); }}>
+                        <b>{other === "short" ? "Switch to short" : "Switch to long"}</b><small>Close and reverse</small>
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
               {action !== "close" && (
-                <div className="row">
-                  <div className="seg" role="group" aria-label="Side">
-                    <button type="button" className={side === "long" ? "on" : ""} onClick={() => setSide("long")}>Long</button>
-                    <button type="button" className={side === "short" ? "on" : ""} onClick={() => setSide("short")}>Short</button>
+                <div className="qty-row">
+                  <label htmlFor="qty">{action === "change" ? `Shares to hold after the order (${side})` : `Number of shares to ${side === "short" ? "sell short" : "buy"}`}</label>
+                  <div className="row" style={{ gap: 8 }}>
+                    <input id="qty" className="qty-input" inputMode="numeric" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ""))} />
+                    {[10, 100, 1000].map((n) => <button key={n} type="button" className="secondary small" onClick={() => setQty(String(Number(qty || 0) + n))}>+{n}</button>)}
                   </div>
-                  <div className="field narrow">
-                    <label htmlFor="qty">{action === "change" ? "New total quantity" : "Quantity (shares)"}</label>
-                    <input id="qty" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^0-9]/g, ""))} />
-                  </div>
+                  {action === "change" && held.get(sel.symbol) && Number(qty) > 0 && side === held.get(sel.symbol)!.side && (
+                    <p className="small muted" style={{ margin: "6px 0 0" }}>
+                      {Number(qty) > held.get(sel.symbol)!.quantity ? `${side === "short" ? "Sell short" : "Buy"} ${num(Number(qty) - held.get(sel.symbol)!.quantity, 0)} more`
+                        : Number(qty) < held.get(sel.symbol)!.quantity ? `${side === "short" ? "Buy back" : "Sell"} ${num(held.get(sel.symbol)!.quantity - Number(qty), 0)}` : "No change"}
+                    </p>
+                  )}
                 </div>
               )}
-              {action === "change" && <p className="small muted">Write the quantity you want to hold after the change (e.g. you hold 1,000 and sell 400: write 600). You can also switch side.</p>}
               {indicative !== null && action !== "close" && (
                 <p className="small muted">Indicative value: {ccy === "EUR" ? eur(indicative) : <>{num(indicative)} {ccy}{fx ? ` ≈ ${eur(indicative / fx)}` : ""}</>} (final price: the close of the execution day).</p>
               )}
               <div className="row">
-                <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>Save order</button>
+                <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>{describe(action, side, qty ? num(Number(qty), 0) : "…", sel.symbol, held.get(sel.symbol)?.side)}</button>
                 <button className="secondary" onClick={() => { setSel(null); setTiming(null); }}>Cancel</button>
               </div>
             </div>
@@ -351,7 +399,9 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
           <div className="field narrow"><label htmlFor="tc">Currency</label><select id="tc" value={tc} onChange={(e) => setTc(e.target.value)}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></div>
           <div className="field narrow"><label htmlFor="ta">EUR amount</label><input id="ta" inputMode="decimal" value={ta} onChange={(e) => setTa(e.target.value.replace(/[^0-9.\-]/g, ""))} /></div>
           <button style={{ alignSelf: "flex-end" }} disabled={!Number(ta)} onClick={async () => {
-            const { data, error } = await supabase.rpc("place_transfer", { p_currency: tc, p_eur_amount: Number(ta) });
+            const { data, error } = d.adminView
+              ? await supabase.rpc("place_transfer_admin", { p_team: d.teamId, p_currency: tc, p_eur_amount: Number(ta) })
+              : await supabase.rpc("place_transfer", { p_currency: tc, p_eur_amount: Number(ta) });
             if (error) setMsg({ kind: "err", text: errText(error) });
             else { setTa(""); setMsg({ kind: "ok", text: `Transfer saved: ECB rate of ${date((data as Transfer).exec_date)}.` }); }
             await reload();
@@ -421,9 +471,9 @@ function History({ d }: { d: any }) {
   );
 }
 
-function TeamTab() {
+function TeamTab({ teamId }: { teamId?: string }) {
   const q = useLoad(async () => {
-    const { data, error } = await supabase.rpc("my_team_info");
+    const { data, error } = teamId ? await supabase.rpc("team_info_admin", { p_team: teamId }) : await supabase.rpc("my_team_info");
     if (error) throw new Error(error.message);
     return data as { role: string; code: string | null; members: { name: string; role: string; email: string | null; joined: string }[] } | null;
   });
@@ -433,7 +483,7 @@ function TeamTab() {
   const t = q.data;
   return (
     <div className="grid cols-2">
-      {t.role === "president" && (
+      {(t.role === "president" || t.role === "organiser") && (
         <div className="card dark">
           <div className="eyebrow">Team code</div>
           <h3 style={{ marginTop: 10 }}>Invite your members</h3>
@@ -451,10 +501,10 @@ function TeamTab() {
       <div className="card">
         <h3>Members ({t.members.length})</h3>
         <div className="table-wrap"><table>
-          <thead><tr><th>Name</th><th>Role</th>{t.role === "president" && <th>E-mail</th>}<th>Joined</th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th>{t.role !== "member" && <th>E-mail</th>}<th>Joined</th></tr></thead>
           <tbody>{t.members.map((m, i) => (
             <tr key={i}><td>{m.name}</td><td><span className={`badge ${m.role === "president" ? "president" : ""}`}>{m.role}</span></td>
-              {t.role === "president" && <td className="small">{m.email}</td>}<td className="small">{date(m.joined)}</td></tr>
+              {t.role !== "member" && <td className="small">{m.email}</td>}<td className="small">{date(m.joined)}</td></tr>
           ))}</tbody>
         </table></div>
         <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. To remove a member, contact the organiser.</p>

@@ -19,7 +19,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -70,7 +70,7 @@ const rep = await as("authenticated", U1, "select target_quantity q, exec_date::
 ok("re-open before the close replaces the pending order", rep.rows.length === 1 && Number((rep.rows[0] as any).q) === 5);
 ok("order placed before the start runs at the start close (month 1)", (rep.rows[0] as any).d === "2026-12-01" && (rep.rows[0] as any).month_n === 1);
 await as("authenticated", U1, "select place_order('AAPL','open','long',100)");
-await expectErr("close not held rejected", () => as("authenticated", U1, "select place_order('ENI.MI','close')"), /do not hold/);
+await expectErr("close not held rejected", () => as("authenticated", U1, "select place_order('ENI.MI','close')"), /not hold/);
 await expectErr("ETF rejected", () => as("authenticated", U1, "select place_order('SPY','open','long',1)"), /Only listed stocks/);
 await expectErr("fractional qty rejected", () => as("authenticated", U1, "select place_order('ENI.MI','open','long',1.5)"), /whole number/);
 await expectErr("unknown symbol rejected", () => as("authenticated", U1, "select place_order('ZZZ','open','long',1)"), /Unknown instrument/);
@@ -127,6 +127,17 @@ ok("president sees the team code and member e-mails", infoP.role === "president"
 const infoM = ((await as("authenticated", U1, "select my_team_info() i")).rows[0] as any).i;
 ok("member sees teammates but no code and no e-mails", infoM.role === "member" && infoM.code === null && infoM.members.length === 2 && infoM.members.every((m: any) => m.email === null));
 ok("no team -> no info", ((await as("authenticated", U4, "select my_team_info() i")).rows[0] as any).i === null);
+
+// --- organiser acting for a team
+await as("authenticated", ADMIN, `select place_order_admin('${T1}', 'ENI.MI', 'open', 'short', 7)`);
+const adm = (await db.query(`select team_id, side, target_quantity q, status from orders where symbol='ENI.MI' and team_id='${T1}'`)).rows[0] as any;
+ok("admin places an order for a team", adm?.side === "short" && Number(adm.q) === 7 && adm.status === "pending");
+await expectErr("members cannot use the admin order function", () => as("authenticated", U1, `select place_order_admin('${T1}', 'ENI.MI', 'close')`), /Reserved to the organiser/);
+const admId = (await db.query(`select id from orders where symbol='ENI.MI' and team_id='${T1}' and status='pending'`)).rows[0] as any;
+await as("authenticated", ADMIN, "select cancel_order_admin($1)", [admId.id]);
+ok("admin cancels it", ((await db.query(`select status from orders where id=$1`, [admId.id])).rows[0] as any).status === "cancelled");
+ok("admin sees team info", ((await as("authenticated", ADMIN, `select team_info_admin('${T1}') i`)).rows[0] as any).i.members.length === 2);
+ok("members get no admin team info", ((await as("authenticated", U1, `select team_info_admin('${T1}') i`)).rows[0] as any).i === null);
 
 // --- anonymous visit statistics
 const V = "20000000-0000-0000-0000-000000000001";

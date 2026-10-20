@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { useAuth } from "./lib/auth";
 import { configured, supabase } from "./lib/supabase";
@@ -26,6 +26,11 @@ function Guard({ need, children }: { need: "team" | "admin"; children: ReactNode
     return isAdmin ? <Navigate to="/admin" replace /> : <p>Your account is not linked to a team. Please contact the organiser.</p>;
   }
   return <>{children}</>;
+}
+
+function AdminTeamView() {
+  const { id } = useParams();
+  return <MyTeam key={id} teamId={id} />;
 }
 
 function LoginPage() {
@@ -84,6 +89,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/team" element={<Guard need="team"><MyTeam /></Guard>} />
           <Route path="/admin" element={<Guard need="admin"><Admin /></Guard>} />
+          <Route path="/admin/team/:id" element={<Guard need="admin"><AdminTeamView /></Guard>} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/cookies" element={<Cookies />} />
           <Route path="*" element={<Navigate to="/" replace />} />

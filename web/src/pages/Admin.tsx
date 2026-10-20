@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { callFunction, errText, supabase } from "../lib/supabase";
 import { must, useLoad, type Settings } from "../lib/data";
@@ -5,17 +6,18 @@ import { calendarMonths } from "../lib/months";
 import { date, dateTime, download, num, pct, toCsv } from "../lib/format";
 import { Loading, Notice, Tabs } from "../components/ui";
 
-type Tab = "teams" | "accounts" | "orders" | "data" | "settings" | "engine" | "visits" | "export";
+type Tab = "teams" | "accounts" | "orders" | "data" | "manual" | "settings" | "engine" | "visits" | "export";
 
 export default function Admin() {
   const [tab, setTab] = useState<Tab>("teams");
   return (
     <>
       <div className="page-head"><div className="eyebrow">Organiser</div><h1>Admin panel</h1></div>
-      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["accounts", "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
+      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["accounts", "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["manual", "Manual corrections"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
       {tab === "teams" && <Teams />}
       {tab === "accounts" && <Accounts />}
       {tab === "visits" && <Visits />}
+      {tab === "manual" && <MarketData manual />}
       {tab === "orders" && <Orders />}
       {tab === "data" && <MarketData />}
       {tab === "settings" && <SettingsTab />}
@@ -170,7 +172,12 @@ function TeamRow({ t, reload, setMsg }: any) {
         <input aria-label={`Violations of ${t.name}`} style={{ width: 70, minHeight: 32 }} type="number" min={0} defaultValue={t.violations}
           onBlur={async (e) => { const v = Number(e.target.value); if (v !== t.violations) { await supabase.from("teams").update({ violations: v }).eq("id", t.id); reload(); } }} />
       </td>
-      <td><button className="danger small" disabled={busy} onClick={deleteTeam}>Delete team</button></td>
+      <td>
+        <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+          <Link className="btn small" to={`/admin/team/${t.id}`}>Open portfolio</Link>
+          <button className="danger small" disabled={busy} onClick={deleteTeam}>Delete team</button>
+        </div>
+      </td>
     </tr>
   );
 }
@@ -327,7 +334,7 @@ function Orders() {
 }
 
 // ------------------------------------------------------------------ market data
-function MarketData() {
+function MarketData({ manual = false }: { manual?: boolean }) {
   const q = useLoad(async () => {
     const [p, f, e, i] = await Promise.all([
       must(supabase.from("prices").select("*").eq("source", "manual").order("date", { ascending: false }).limit(200)),
@@ -348,11 +355,8 @@ function MarketData() {
   return (
     <>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-      <details className="card manual-box" open={(q.data.prices.length + q.data.fx.length + q.data.events.length) > 0 || undefined}>
-        <summary>
-          <b>Manual corrections</b>
-          <span className="muted small"> · only if the engine reports a wrong or missing price, rate or dividend ({(q.data.prices.length + q.data.fx.length + q.data.events.length)} saved)</span>
-        </summary>
+      {manual && <>
+      <p className="muted small">Use these only when the engine reports a wrong or missing price, exchange rate or dividend. A manual value replaces Yahoo Finance or the ECB for that day; then press "Run engine" in the Engine tab.</p>
       <Notice kind="warn">Manual values always win over Yahoo Finance and the ECB for the same day (Art. 14). Prices are in the main currency unit (pounds, not pence). FX rates are units of currency per 1 EUR.</Notice>
       <div className="grid cols-3">
         <div className="card stack">
@@ -404,9 +408,9 @@ function MarketData() {
           </tbody>
         </table></div>
       </div>
-      </details>
+      </>}
 
-      <div className="card">
+      {!manual && <div className="card">
         <h3>Instruments ({q.data.instruments.length})</h3>
         <div className="row" style={{ marginBottom: 12 }}>
           <div className="field narrow"><label htmlFor="vs">Check a Yahoo symbol</label><input id="vs" value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} placeholder="VOD.L" /></div>
@@ -419,7 +423,7 @@ function MarketData() {
           <thead><tr><th>Symbol</th><th>Name</th><th>Exchange</th><th>Currency</th><th className="num">Unit divisor</th></tr></thead>
           <tbody>{q.data.instruments.map((i) => <tr key={i.symbol}><td>{i.symbol}</td><td>{i.name}</td><td>{i.exchange}</td><td>{i.currency}</td><td className="num">{i.price_divisor}</td></tr>)}</tbody>
         </table></div>
-      </div>
+      </div>}
     </>
   );
 }
