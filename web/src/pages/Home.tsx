@@ -84,9 +84,6 @@ export default function Home() {
       <section className="hero-full" aria-label="Interuniversity Investment Challenge">
         <div className="hero-bar">
           <span className="brand"><span className="brand-mark" aria-hidden="true" />Investment Challenge <span className="yr">{ed.short}</span></span>
-          <a className="sponsor-pill" href={SPONSOR_URL} target="_blank" rel="noreferrer">
-            <span className="tag">Sponsor</span><b>WeFocusBuddy</b><span className="long">· free with your university e-mail</span> <span aria-hidden="true">↗</span>
-          </a>
         </div>
         <div className="hero-main">
           <div className="hero-copy">

@@ -20,6 +20,10 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<"ask" | "form" | "sent">("ask");
+  // Browsers must not fill the sign-in fields on page load: they stay read-only (browsers skip
+  // read-only fields) until the user clicks or tabs into one, then the saved logins are offered.
+  const [armed, setArmed] = useState(false);
+  const arm = { readOnly: !armed, onMouseDown: () => setArmed(true), onTouchStart: () => setArmed(true), onFocus: () => setArmed(true) };
 
   if (session) {
     return (
@@ -78,10 +82,10 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
 
       {mode === "signin" ? (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); signIn(); }}>
-          <div><label htmlFor="si-em">E-mail</label><input id="si-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div><label htmlFor="si-em">E-mail</label><input id="si-em" type="email" autoComplete="username" {...arm} required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div>
             <div className="label-row"><label htmlFor="si-pw">Password</label><button type="button" className="linklike" onClick={() => { setMode("forgot"); setErr(""); setStep("ask"); }}>Forgot password?</button></div>
-            <input id="si-pw" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input id="si-pw" type="password" autoComplete="current-password" {...arm} required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>

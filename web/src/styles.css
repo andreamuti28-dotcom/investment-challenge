@@ -580,3 +580,9 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-
 .yes-no .yes:hover:not(:disabled) { background: #fff; border-color: #fff; color: var(--ink); }
 .yes-no .no { background: transparent; color: var(--text); border-color: rgba(255, 255, 255, 0.22); }
 .yes-no .no:hover:not(:disabled) { border-color: #fff; color: #fff; background: rgba(255, 255, 255, 0.04); }
+
+/* sign-in box starts level with the top of "Interuniversity Investment Challenge · Edition …" */
+.hero-copy, .hero-side { padding-top: clamp(0px, 4vh, 48px); }
+.auth-panel input[readonly] { cursor: text; }
+@media (max-width: 960px) { .hero-side { padding-top: 0; } }
+@media (max-height: 640px) and (min-width: 961px) { .hero-copy, .hero-side { padding-top: 6px; } }
