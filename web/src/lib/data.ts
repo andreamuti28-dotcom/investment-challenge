@@ -12,6 +12,8 @@ export interface Settings {
   end_date: string;
   registration_deadline: string;
   regulation_url: string | null;
+  edition_year?: number;
+  public_start_date?: string | null;
 }
 export interface Month {
   n: number;

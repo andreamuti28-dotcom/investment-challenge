@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { loadCalendar, useLoad } from "../lib/data";
 import { date, eur } from "../lib/format";
 import AuthPanel from "../components/AuthPanel";
+import { useEdition } from "../lib/edition";
 
 const SPONSOR_URL = "https://wefocusbuddy.com/a";
 const ORGANISER_URL = "https://www.linkedin.com/in/andrea-muti-24416b2a1";
@@ -70,8 +71,9 @@ function useReveal() {
 
 export default function Home() {
   const { data } = useLoad(loadCalendar);
-  const s = data?.settings;
-  const start = s ? date(s.start_date) : "1 Dec 2026";
+  const ed = useEdition();
+  const s = data?.settings as any;
+  const start = date(s?.public_start_date ?? ed.publicStart ?? s?.start_date ?? "2026-12-01");
   const end = s ? date(s.end_date) : "31 May 2027";
   const capital = s ? eur(s.capital, 0) : "€ 1,000,000";
   useReveal();
@@ -81,14 +83,14 @@ export default function Home() {
       {/* ---------------- first screen: challenge, sign in / register, sponsor */}
       <section className="hero-full" aria-label="Interuniversity Investment Challenge">
         <div className="hero-bar">
-          <span className="brand"><span className="brand-mark" aria-hidden="true" />Investment Challenge <span className="yr">26/27</span></span>
+          <span className="brand"><span className="brand-mark" aria-hidden="true" />Investment Challenge <span className="yr">{ed.short}</span></span>
           <a className="sponsor-pill" href={SPONSOR_URL} target="_blank" rel="noreferrer">
             <span className="tag">Sponsor</span><b>WeFocusBuddy</b><span className="long">· free with your university e-mail</span> <span aria-hidden="true">↗</span>
           </a>
         </div>
         <div className="hero-main">
           <div className="hero-copy">
-            <div className="eyebrow">Interuniversity Investment Challenge · Edition 2026/27</div>
+            <div className="eyebrow">Interuniversity Investment Challenge · Edition {ed.long}</div>
             <h1>Trade the world.<br /><span className="dim">Beat the index.</span></h1>
             <Partners />
             <div className="hero-facts">
@@ -151,7 +153,7 @@ export default function Home() {
           <div>
             <div className="eyebrow">Official sponsor</div>
             <h2>WeFocusBuddy</h2>
-            <p>One-to-one online coworking sessions to study and work with focus: you book a slot, meet another student on video, say what you will do and get it done together. The partner of the 2026/27 edition.</p>
+            <p>One-to-one online coworking sessions to study and work with focus: you book a slot, meet another student on video, say what you will do and get it done together. The partner of the {ed.long} edition.</p>
             <p className="sponsor-free"><span>Free</span> for everyone who signs up with a university e-mail.</p>
           </div>
           <a className="btn" href={SPONSOR_URL} target="_blank" rel="noreferrer">Get free access ↗</a>
@@ -160,7 +162,7 @@ export default function Home() {
 
       {/* ---------------- final call */}
       <section className="section cta-final reveal">
-        <div className="eyebrow">The 2026/27 edition</div>
+        <div className="eyebrow">The {ed.long} edition</div>
         <h2>Ready when the bell rings?</h2>
         <div className="row">
           <a className="btn" href="#access" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Register your team</a>

@@ -1,6 +1,7 @@
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { useAuth } from "./lib/auth";
+import { useEdition } from "./lib/edition";
 import { configured, supabase } from "./lib/supabase";
 import Home from "./pages/Home";
 import Leaderboard from "./pages/Leaderboard";
@@ -46,6 +47,7 @@ function LoginPage() {
 
 export default function App() {
   const { session, isAdmin, team } = useAuth();
+  const ed = useEdition();
   const nav = useNavigate();
   const loc = useLocation();
   const landing = loc.pathname === "/";
@@ -68,7 +70,7 @@ export default function App() {
       {!landing && (
         <header className="topbar">
           <div className="topbar-inner">
-            <NavLink to="/" className="brand"><span className="brand-mark" aria-hidden="true" />Investment Challenge <span className="yr">26/27</span></NavLink>
+            <NavLink to="/" className="brand"><span className="brand-mark" aria-hidden="true" />Investment Challenge <span className="yr">{ed.short}</span></NavLink>
             <nav className="nav" aria-label="Main">
               <NavLink to="/" end>Home</NavLink>
               <NavLink to="/leaderboard">Leaderboard</NavLink>

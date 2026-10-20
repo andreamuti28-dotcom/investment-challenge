@@ -115,11 +115,12 @@ const sign = (side: string) => (side === "long" ? 1 : -1);
 const ccyOrder = (a: string, b: string) => (a === "EUR" ? -1 : b === "EUR" ? 1 : a.localeCompare(b));
 const sheetSafe = (s: string) => s.replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
 
+let EDITION = "2026/27";
 function setup(ws: ExcelJS.Worksheet, title: string, subtitle: string, lastCol: number) {
   ws.properties.defaultRowHeight = 16;
   ws.views = [{ showGridLines: false }];
   ws.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } };
-  ws.headerFooter = { oddFooter: "&L&8Interuniversity Investment Challenge 2026/27&R&8Page &P of &N" };
+  ws.headerFooter = { oddFooter: `&L&8Interuniversity Investment Challenge ${EDITION}&R&8Page &P of &N` };
   ws.mergeCells(1, 1, 1, lastCol);
   ws.mergeCells(2, 1, 2, lastCol);
   const t = ws.getCell(1, 1);
@@ -263,6 +264,7 @@ export async function buildWorkbook(x: ExportData, Excel: typeof ExcelJS): Promi
   wb.creator = "Interuniversity Investment Challenge";
   wb.created = new Date();
   const S = x.settings;
+  { const y = Number(S.edition_year) || 2026; EDITION = `${y}/${String((y + 1) % 100).padStart(2, "0")}`; }
   const capital = Number(S.capital);
   const teamById = Object.fromEntries(x.teams.map((t) => [t.id, t]));
   const lb = Object.fromEntries(x.leaderboard.map((l) => [l.team_id, l]));
@@ -344,7 +346,7 @@ export async function buildWorkbook(x: ExportData, Excel: typeof ExcelJS): Promi
       { key: "hhi", header: "HHI", width: 8, fmt: F.rate, value: (t) => n(lb[t.id]?.hhi) },
       { key: "viol", header: "Violations", width: 9, fmt: F.int, value: (t) => n(lb[t.id]?.violations) ?? 0 },
     ];
-    setup(ws, "Interuniversity Investment Challenge 2026/27", `Portfolio report · all teams · valuation as of ${asOfTxt}`, cols.length);
+    setup(ws, `Interuniversity Investment Challenge ${EDITION}`, `Portfolio report · all teams · valuation as of ${asOfTxt}`, cols.length);
     ws.getColumn(1).width = 7; ws.getColumn(2).width = 28; ws.getColumn(3).width = 28;
     sectionTitle(ws, 4, "Challenge", cols.length);
     const a = infoBlock(ws, 5, [

@@ -569,3 +569,14 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-
 .contact-btn:hover svg { color: #fff; }
 @media (max-width: 960px) { .contact-btn { margin-top: 18px; } }
 .hero-main { align-content: start; }
+
+.card.requests { border-color: rgba(245, 196, 81, 0.45); box-shadow: inset 3px 0 0 var(--warn); }
+
+/* "Forgot password?" confirmation */
+.auth-panel .forgot-q { font-family: var(--display); font-size: 18px; font-weight: 600; color: #fff; margin: 0; }
+.yes-no { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.yes-no button { min-height: 40px; }
+.yes-no .yes { background: #e9edf4; color: var(--ink); border-color: #e9edf4; }
+.yes-no .yes:hover:not(:disabled) { background: #fff; border-color: #fff; color: var(--ink); }
+.yes-no .no { background: transparent; color: var(--text); border-color: rgba(255, 255, 255, 0.22); }
+.yes-no .no:hover:not(:disabled) { border-color: #fff; color: #fff; background: rgba(255, 255, 255, 0.04); }

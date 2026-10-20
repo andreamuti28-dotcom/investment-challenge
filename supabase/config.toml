@@ -13,3 +13,6 @@ verify_jwt = false
 
 [functions.register]
 verify_jwt = false
+
+[functions.password-request]
+verify_jwt = false

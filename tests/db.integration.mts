@@ -19,7 +19,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -211,4 +211,16 @@ const out3 = runEngine(toEngineInput(((await as("service_role", null, "select en
 await as("service_role", null, "select engine_write($1::jsonb)", [JSON.stringify(out3)]);
 const eni = await db.query(`select status, reject_source from orders where symbol='ENI.MI'`);
 ok("admin rejection preserved & excluded", (eni.rows[0] as any).reject_source === "admin" && out3.positions.every((p) => p.symbol !== "ENI.MI"));
+// password reset requests
+const pr1 = await as("service_role", null, "select request_password_reset(' pres@uni.IT ') j");
+ok("reset request stored for an existing account", (pr1.rows[0] as any).j.stored === true && (pr1.rows[0] as any).j.organisers.includes("admin@x"), JSON.stringify(pr1.rows[0]));
+const pr2 = await as("service_role", null, "select request_password_reset('pres@uni.it') j");
+ok("duplicate request within 30 minutes not stored", (pr2.rows[0] as any).j.stored === false);
+const pr3 = await as("service_role", null, "select request_password_reset('nobody@uni.it') j");
+ok("unknown e-mail not stored", (pr3.rows[0] as any).j.stored === false);
+await expectErr("anon cannot call request_password_reset", () => as("anon", null, "select request_password_reset('pres@uni.it')"), /permission denied/);
+const prA = await as("anon", null, "select * from password_requests");
+ok("requests hidden from anon", prA.rows.length === 0);
+const prAd = await as("authenticated", ADMIN, "select email from password_requests");
+ok("admin sees the requests", prAd.rows.length === 1);
 console.log(fails ? `\n${fails} FAILED` : "\nALL DB TESTS PASSED");

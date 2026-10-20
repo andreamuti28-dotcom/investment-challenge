@@ -1,3 +1,4 @@
+import { useEdition } from "../lib/edition";
 import { Link } from "react-router-dom";
 import { openCookiePreferences } from "../lib/consent";
 
@@ -13,6 +14,7 @@ const STORAGE = [
 ];
 
 export function Privacy() {
+  const ed = useEdition();
   return (
     <article className="card legal">
       <div className="eyebrow">Information</div>
@@ -20,7 +22,7 @@ export function Privacy() {
 
       <h2>Data controller</h2>
       <p>
-        Andrea Muti, organiser of the Interuniversity Investment Challenge 2026/2027. For any request about your data you can contact me via{" "}
+        Andrea Muti, organiser of the Interuniversity Investment Challenge {ed.full}. For any request about your data you can contact me via{" "}
         <a href={LINKEDIN} target="_blank" rel="noreferrer noopener">LinkedIn</a>.
       </p>
 

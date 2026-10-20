@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { callFunction, errText, supabase } from "../lib/supabase";
 import { must, useLoad, type Settings } from "../lib/data";
 import { calendarMonths } from "../lib/months";
+import { loadEdition } from "../lib/edition";
 import { date, dateTime, download, num, pct, toCsv } from "../lib/format";
 import { Loading, Notice, Tabs } from "../components/ui";
 
@@ -10,10 +11,17 @@ type Tab = "teams" | "accounts" | "orders" | "data" | "manual" | "settings" | "e
 
 export default function Admin() {
   const [tab, setTab] = useState<Tab>("teams");
+  const [open, setOpen] = useState(0);
+  useEffect(() => {
+    const count = () => supabase.from("password_requests").select("id", { count: "exact", head: true }).eq("status", "open").then(({ count: c }) => setOpen(c ?? 0));
+    count();
+    window.addEventListener("ic-requests", count);
+    return () => window.removeEventListener("ic-requests", count);
+  }, []);
   return (
     <>
       <div className="page-head"><div className="eyebrow">Organiser</div><h1>Admin panel</h1></div>
-      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["accounts", "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["manual", "Manual corrections"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
+      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["accounts", open ? `Accounts (${open})` : "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["manual", "Manual corrections"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
       {tab === "teams" && <Teams />}
       {tab === "accounts" && <Accounts />}
       {tab === "visits" && <Visits />}
@@ -191,6 +199,8 @@ function Accounts() {
   return (
     <>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      <PasswordRequests users={q.data} onMessage={setMsg} />
+      <h3 style={{ marginTop: 8 }}>All accounts</h3>
       <p className="muted small">Every account that can sign in. Deleting a member or president removes only that person: the team and its results stay. A deleted president can register again with the same e-mail. To remove a whole team, use "Delete team" in the Teams tab.</p>
       <div className="table-wrap"><table>
         <thead><tr><th>Name</th><th>E-mail</th><th>Role</th><th>Team</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
@@ -220,6 +230,45 @@ function Accounts() {
         ))}</tbody>
       </table></div>
     </>
+  );
+}
+
+// "Forgot password?" requests from the sign-in box
+function PasswordRequests({ users, onMessage }: { users: any[]; onMessage: (m: { kind: "ok" | "err"; text: ReactNode }) => void }) {
+  const q = useLoad(async () => must(supabase.from("password_requests").select("*").eq("status", "open").order("created_at", { ascending: false })) as Promise<any[]>);
+  if (q.error || !q.data) return null;
+  const close = async (id: string, status: "done" | "dismissed") => {
+    await supabase.from("password_requests").update({ status, handled_at: new Date().toISOString() }).eq("id", id);
+    await q.reload();
+    window.dispatchEvent(new Event("ic-requests"));
+  };
+  return (
+    <div className={`card ${q.data.length ? "requests" : ""}`}>
+      <h3>Password reset requests {q.data.length > 0 && <span className="badge pending" style={{ marginLeft: 6 }}>{q.data.length} open</span>}</h3>
+      {q.data.length === 0 ? <p className="muted small" style={{ margin: 0 }}>No open requests. When someone clicks "Forgot password?" you get an e-mail and the request appears here.</p> : (
+        <div className="table-wrap"><table>
+          <thead><tr><th>Name</th><th>E-mail</th><th>Team</th><th>Requested</th><th /></tr></thead>
+          <tbody>{q.data.map((r) => (
+            <tr key={r.id}>
+              <td>{r.name ?? "–"}</td><td className="small">{r.email}</td><td>{r.team ?? "–"}</td><td className="small">{dateTime(r.created_at)}</td>
+              <td><div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                <button className="small" onClick={async () => {
+                  const userId = r.user_id ?? users.find((u) => u.email?.toLowerCase() === r.email)?.id;
+                  if (!userId) { onMessage({ kind: "err", text: "This account no longer exists." }); await close(r.id, "dismissed"); return; }
+                  if (!window.confirm(`Create a temporary password for ${r.email}? Their account, team and portfolio stay as they are.`)) return;
+                  try {
+                    const res = await callFunction("admin", { action: "reset_password", userId });
+                    onMessage({ kind: "ok", text: <>Temporary password for {r.email}: <span className="secret">{res.password}</span> Send it privately: they sign in with it and choose a new one in My team &gt; Account.</> });
+                    await close(r.id, "done");
+                  } catch (e) { onMessage({ kind: "err", text: errText(e) }); }
+                }}>Reset password</button>
+                <button className="secondary small" onClick={() => close(r.id, "dismissed")}>Dismiss</button>
+              </div></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </div>
   );
 }
 
@@ -438,15 +487,20 @@ function SettingsTab() {
           <div><label htmlFor="s5">Benchmark currency (of its listing: SWDA.L is in GBP)</label><input id="s5" value={cur.benchmark_currency} onChange={(e) => set("benchmark_currency", e.target.value.toUpperCase())} /></div>
           <div><label htmlFor="s6">Start date</label><input id="s6" type="date" value={cur.start_date} onChange={(e) => set("start_date", e.target.value)} /></div>
           <div><label htmlFor="s7">End date</label><input id="s7" type="date" value={cur.end_date} onChange={(e) => set("end_date", e.target.value)} /></div>
+          <div><label htmlFor="s9">Edition (starting year)</label><input id="s9" type="number" min={2000} max={2100} value={cur.edition_year ?? 2026} onChange={(e) => set("edition_year", e.target.value)} /><p className="small muted" style={{ margin: "4px 0 0" }}>Shown everywhere as {(() => { const y = Number(cur.edition_year) || 2026; return `${String(y % 100).padStart(2, "0")}/${String((y + 1) % 100).padStart(2, "0")}`; })()}</p></div>
+          <div><label htmlFor="s10">Start date shown on the website</label><input id="s10" type="date" value={cur.public_start_date ?? ""} onChange={(e) => set("public_start_date", e.target.value || null)} /><p className="small muted" style={{ margin: "4px 0 0" }}>Key dates on the home page. The start date above drives the calculations.</p></div>
+          <div><label htmlFor="s11">Registration deadline</label><input id="s11" type="date" value={cur.registration_deadline ?? ""} onChange={(e) => set("registration_deadline", e.target.value)} /></div>
           <div><label htmlFor="s8">Regulation PDF link</label><input id="s8" value={cur.regulation_url ?? ""} onChange={(e) => set("regulation_url", e.target.value || null)} placeholder="https://…" /></div>
         </div>
         <button style={{ marginTop: 16 }} disabled={!s} onClick={async () => {
           const { error } = await supabase.from("challenge_settings").update({
             capital: Number(cur.capital), risk_free_annual: Number(cur.risk_free_annual), stop_threshold: Number(cur.stop_threshold),
             benchmark_symbol: cur.benchmark_symbol, benchmark_currency: cur.benchmark_currency, start_date: cur.start_date, end_date: cur.end_date,
-            regulation_url: cur.regulation_url, updated_at: new Date().toISOString(),
+            regulation_url: cur.regulation_url, edition_year: Number(cur.edition_year) || 2026, public_start_date: cur.public_start_date || null,
+            registration_deadline: cur.registration_deadline, updated_at: new Date().toISOString(),
           }).eq("id", 1);
           if (error) { setMsg({ kind: "err", text: errText(error) }); return; }
+          loadEdition(true);
           setMsg({ kind: "ok", text: "Settings saved. Recalculating everything with the new settings…" });
           setS(null); q.reload();
           try {

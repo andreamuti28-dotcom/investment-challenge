@@ -19,7 +19,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   const [code, setCode] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [step, setStep] = useState<"ask" | "form" | "sent">("ask");
 
   if (session) {
     return (
@@ -47,11 +47,11 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
 
   async function sendReset() {
     setBusy(true); setErr("");
-    const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}reset-password`;
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    try {
+      await callFunction("password-request", { email: email.trim() });
+      setStep("sent");
+    } catch (e) { setErr(errText(e)); }
     setBusy(false);
-    if (error) return setErr(/rate limit/i.test(error.message) ? "Too many requests: try again in a few minutes." : error.message);
-    setSent(true);
   }
 
   async function register() {
@@ -80,24 +80,32 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
         <form className="stack" onSubmit={(e) => { e.preventDefault(); signIn(); }}>
           <div><label htmlFor="si-em">E-mail</label><input id="si-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div>
-            <div className="label-row"><label htmlFor="si-pw">Password</label><button type="button" className="linklike" onClick={() => { setMode("forgot"); setErr(""); setSent(false); }}>Forgot password?</button></div>
+            <div className="label-row"><label htmlFor="si-pw">Password</label><button type="button" className="linklike" onClick={() => { setMode("forgot"); setErr(""); setStep("ask"); }}>Forgot password?</button></div>
             <input id="si-pw" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>
       ) : mode === "forgot" ? (
-        sent ? (
-          <div className="stack">
-            <Notice kind="ok">If an account exists for <b>{email.trim()}</b>, you will receive an e-mail with a link to choose a new password. Check the spam folder too.</Notice>
-            <button type="button" className="linklike" onClick={() => { setMode("signin"); setSent(false); }}>← Back to sign in</button>
+        step === "ask" ? (
+          <div className="stack forgot">
+            <p className="forgot-q">Do you want to reset your password?</p>
+            <p className="sub" style={{ margin: 0 }}>The organiser will be notified and will send you a temporary password. Your account, team and portfolio stay as they are.</p>
+            <div className="yes-no">
+              <button type="button" className="yes" onClick={() => setStep("form")}>Yes</button>
+              <button type="button" className="no" onClick={() => { setMode("signin"); setErr(""); }}>No</button>
+            </div>
           </div>
-        ) : (
+        ) : step === "form" ? (
           <form className="stack" onSubmit={(e) => { e.preventDefault(); sendReset(); }}>
-            <p className="sub" style={{ margin: 0 }}>Enter the e-mail you registered with: we will send you a link to set a new password.</p>
-            <div><label htmlFor="fp-em">E-mail</label><input id="fp-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-            <button type="submit" disabled={busy}>{busy ? "Sending…" : "Send the reset link"}</button>
+            <div><label htmlFor="fp-em">The e-mail you registered with</label><input id="fp-em" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            <button type="submit" disabled={busy}>{busy ? "Sending…" : "Send the request"}</button>
             <button type="button" className="linklike" onClick={() => { setMode("signin"); setErr(""); }}>← Back to sign in</button>
           </form>
+        ) : (
+          <div className="stack">
+            <Notice kind="ok">Request sent. If <b>{email.trim()}</b> is registered, the organiser will contact you with a temporary password: sign in with it and choose a new one in My team &gt; Account.</Notice>
+            <button type="button" className="linklike" onClick={() => { setMode("signin"); setStep("ask"); }}>← Back to sign in</button>
+          </div>
         )
       ) : (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); register(); }}>
