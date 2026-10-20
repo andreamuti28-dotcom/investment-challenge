@@ -12,7 +12,7 @@ import CookieBanner from "./components/CookieBanner";
 import AuthPanel from "./components/AuthPanel";
 import { openCookiePreferences, trackVisit } from "./lib/consent";
 
-const SPONSOR_URL = "https://wefocusbuddy.com";
+const SPONSOR_URL = "https://wefocusbuddy.com/a";
 const heroVars = {
   "--hero-img-lg": `url("${import.meta.env.BASE_URL}hero-halftone.webp")`,
   "--hero-img-sm": `url("${import.meta.env.BASE_URL}hero-halftone-small.webp")`,

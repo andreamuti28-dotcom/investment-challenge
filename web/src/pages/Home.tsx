@@ -4,7 +4,7 @@ import { loadCalendar, useLoad } from "../lib/data";
 import { date, eur } from "../lib/format";
 import AuthPanel from "../components/AuthPanel";
 
-const SPONSOR_URL = "https://wefocusbuddy.com";
+const SPONSOR_URL = "https://wefocusbuddy.com/a";
 
 /** Logos of the participating associations: add { name, logo, url } entries (logo files in web/public/partners/). */
 const PARTNERS: { name: string; short: string; logo: string; url?: string }[] = [
@@ -38,13 +38,20 @@ function Partners() {
 
 function SponsorCard() {
   return (
-    <a className="sponsor-card" href={SPONSOR_URL} target="_blank" rel="noreferrer" aria-label="WeFocusBuddy, official sponsor: free with a university e-mail">
-      <span className="sc-mark" aria-hidden="true"><i /><i /></span>
-      <span className="sc-body">
-        <span className="sc-top"><span className="sc-eyebrow">Official sponsor</span><span className="sc-free">Free with a university e-mail</span></span>
-        <span className="sc-head"><span className="sc-name">WeFocusBuddy</span><span className="sc-cta">Get free access <span aria-hidden="true">↗</span></span></span>
-        <span className="sc-what">Study and work with focus: book a one-to-one online coworking session with another student and get things done together.</span>
-        <span className="sc-perk">Sign up with your <b>university e-mail</b> and it&apos;s completely free.</span>
+    <a className="sponsor-card call" href={SPONSOR_URL} target="_blank" rel="noreferrer" aria-label="WeFocusBuddy, official sponsor: free with a university e-mail. Get free access">
+      <span className="sc-top"><span className="sc-free">Free with a university e-mail</span><span className="sc-eyebrow">Official sponsor</span></span>
+      <span className="sc-main">
+        <span className="sc-body">
+          <span className="sc-name">WeFocusBuddy</span>
+          <span className="sc-what">Study and work with focus: book a one-to-one online coworking session with another student and get things done together.</span>
+          <span className="sc-perk">Sign up with your <b>university e-mail</b> and it&apos;s completely free.</span>
+        </span>
+        <span className="sc-call" aria-hidden="true">
+          <img src={`${import.meta.env.BASE_URL}sponsor-call.webp`} alt="" width={192} height={144} loading="eager" />
+          <span className="sc-live"><i />Focus session</span>
+          <span className="sc-self">You</span>
+          <span className="sc-cta">Get free access <span>↗</span></span>
+        </span>
       </span>
     </a>
   );
