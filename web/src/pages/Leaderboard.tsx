@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { must, useLoad } from "../lib/data";
 import { dateTime, eur, pct, pctU, plain, signClass } from "../lib/format";
@@ -15,6 +15,7 @@ interface Row {
 
 export default function Leaderboard() {
   const [comp, setComp] = useState<"A" | "B">("A");
+  const [open, setOpen] = useState<string | null>(null);
   const { data, error } = useLoad(async () => {
     const [rows, run, nav, bench] = await Promise.all([
       must(supabase.from("leaderboard").select("*")),
@@ -70,12 +71,13 @@ export default function Leaderboard() {
                   <th className="num">vs MSCI World</th><th className="num" title="Annualised, monthly returns">Volatility</th>
                   <th className="num">Sharpe</th><th className="num">Sortino</th><th className="num">Beta</th>
                   <th className="num">Tracking error</th><th className="num">Max drawdown</th><th className="num">Calmar</th>
-                  <th className="num">Operations</th><th className="num">Max weight</th><th className="num">HHI</th><th className="num">Violations</th>
+                  <th className="num">Operations</th><th className="num">Max weight</th><th className="num">HHI</th><th className="num">Violations</th><th />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.team_id} className={r.rank_in_competition === 1 ? "first" : ""}>
+                  <Fragment key={r.team_id}>
+                  <tr className={`clickable ${r.rank_in_competition === 1 ? "first" : ""}`} onClick={() => setOpen(open === r.team_id ? null : r.team_id)}>
                     <td className="num">{r.rank_in_competition ?? "–"}</td>
                     <td style={{ minWidth: 190 }}><div><b>{r.name}</b></div><div className="muted small">{r.university}</div></td>
                     <td className="num">{eur(r.nav, 0)}</td>
@@ -92,13 +94,28 @@ export default function Leaderboard() {
                     <td className="num">{pctU(r.max_weight)}</td>
                     <td className="num">{plain(r.hhi, 3)}</td>
                     <td className="num">{r.violations ?? 0}</td>
+                    <td><button className="secondary small chart-toggle" aria-expanded={open === r.team_id}>{open === r.team_id ? "Hide" : "Chart"}</button></td>
                   </tr>
+                  {open === r.team_id && (
+                    <tr className="chart-row"><td colSpan={17}>
+                      <div className="small muted" style={{ marginBottom: 8 }}>Portfolio value of {r.name} in euro compared with the MSCI World (both start at {eur(1_000_000, 0)})</div>
+                      <LineChart
+                        title={`Portfolio value of ${r.name}`}
+                        yFormat={(v) => eur(v, 0)}
+                        series={[
+                          { name: r.name, color: "#7aa2ff", points: data.nav.filter((n) => n.team_id === r.team_id).map((n) => ({ x: n.date, y: Number(n.nav_eur) })) },
+                          { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) })) },
+                        ]}
+                      />
+                    </td></tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
           <p className="muted small">
-            Ranking by total return in euro (Art. 12). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
+            Click a team to see the chart of its portfolio value. Ranking by total return in euro (Art. 12). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
             and need {months < 2 ? "at least two completed months (n/a until then)" : `${months} completed months`}. Risk-free rate as set by the organiser.
           </p>
           <div className="card" style={{ marginTop: 20 }}>

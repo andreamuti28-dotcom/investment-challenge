@@ -23,7 +23,9 @@ export function LineChart({ series, yFormat, title }: { series: Series[]; yForma
   const X = (d: string) => PL + ((t(d) - x0) / (x1 - x0)) * (W - PL - PR);
   const Y = (v: number) => PT + (1 - (v - y0) / (y1 - y0)) * (H - PT - PB);
   const ticks = Array.from({ length: 5 }, (_, i) => y0 + ((y1 - y0) * i) / 4);
-  const monthTicks = dates.filter((d, i) => i === 0 || d.slice(0, 7) !== dates[i - 1].slice(0, 7));
+  const byMonth = dates.filter((d, i) => i === 0 || d.slice(0, 7) !== dates[i - 1].slice(0, 7));
+  const short = byMonth.length < 3; // short periods: a few day labels instead of months
+  const monthTicks = short ? dates.filter((_, i) => i % Math.max(1, Math.ceil(dates.length / 5)) === 0) : byMonth;
   const hx = hover !== null ? dates[hover] : null;
 
   return (
@@ -45,7 +47,7 @@ export function LineChart({ series, yFormat, title }: { series: Series[]; yForma
         ))}
         {monthTicks.map((d) => (
           <text key={d} x={X(d)} y={H - 12} fontSize="12" fill="#8a94a3" textAnchor="middle">
-            {new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "2-digit" })}
+            {new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", short ? { day: "numeric", month: "short" } : { month: "short", year: "2-digit" })}
           </text>
         ))}
         {series.map((s) => (

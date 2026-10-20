@@ -6,6 +6,27 @@ import AuthPanel from "../components/AuthPanel";
 
 const SPONSOR_URL = "https://wefocusbuddy.com";
 
+/** Logos of the participating associations: add { name, logo, url } entries (logo files in web/public/partners/). */
+const PARTNERS: { name: string; logo: string; url?: string }[] = [];
+
+function Partners() {
+  return (
+    <div className="partners">
+      <div className="partners-label">Participating associations</div>
+      {PARTNERS.length === 0 ? (
+        <div className="partners-soon">Announced soon</div>
+      ) : (
+        <div className="partners-logos">
+          {PARTNERS.map((p) => {
+            const img = <img src={`${import.meta.env.BASE_URL}partners/${p.logo}`} alt={p.name} loading="lazy" />;
+            return p.url ? <a key={p.name} href={p.url} target="_blank" rel="noreferrer" title={p.name}>{img}</a> : <span key={p.name} title={p.name}>{img}</span>;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function useReveal() {
   useEffect(() => {
     const els = document.querySelectorAll(".reveal:not(.in)");
@@ -38,10 +59,7 @@ export default function Home() {
           <div className="hero-copy">
             <div className="eyebrow">Interuniversity Investment Challenge · Edition 2026/27</div>
             <h1>Trade the world.<br /><span className="dim">Beat the index.</span></h1>
-            <p className="lead">
-              University teams run {capital} of virtual capital on any listed stock on earth, long or short, from {start} to {end}.
-              Every trade at the closing price. One leaderboard against the MSCI World.
-            </p>
+            <Partners />
             <div className="hero-facts">
               <span>{capital} per team</span><span>Long &amp; short</span><span>Daily close</span><span>6 months</span>
             </div>
@@ -55,7 +73,6 @@ export default function Home() {
       <section className="section" id="how">
         <div className="section-head reveal">
           <div><div className="eyebrow">01 · How it works</div><h2>Three moves<br />to the top.</h2></div>
-          <p>A real-market simulation with the discipline of a fund: no commissions, no shortcuts, every position valued in euro every day.</p>
         </div>
         <div className="steps reveal">
           <div className="step"><div className="n">01</div><h3>Form your team</h3><p>The president registers with the e-mail given to the organiser and shares the team code. Every member joins with that code.</p></div>
@@ -64,26 +81,11 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ---------------- numbers */}
-      <section className="section" style={{ paddingTop: 0 }}>
-        <div className="section-head reveal">
-          <div><div className="eyebrow">02 · The rules in numbers</div><h2>Simple rules.<br />Real markets.</h2></div>
-          <p>Each currency lives in its own sub-portfolio, converted at the ECB reference rate. Dividends and splits are applied automatically.</p>
-        </div>
-        <div className="numbers reveal">
-          <div><div className="big">€1M</div><div className="cap">Virtual capital per team</div></div>
-          <div><div className="big">6</div><div className="cap">Months of live markets</div></div>
-          <div><div className="big">0</div><div className="cap">Commissions on every trade</div></div>
-          <div><div className="big">50%</div><div className="cap">Maximum loss on a short: automatic stop</div></div>
-        </div>
-      </section>
-
       {/* ---------------- competitions */}
       <div className="band">
         <section className="section">
           <div className="section-head reveal">
-            <div><div className="eyebrow">03 · Two competitions</div><h2>Same rules.<br />Separate podiums.</h2></div>
-            <p>Choose the competition that fits your team. Rankings are published separately, with the same metrics.</p>
+            <div><div className="eyebrow">02 · Two competitions</div><h2>Same rules.<br />Separate podiums.</h2></div>
           </div>
           <div className="comps reveal">
             <div className="comp"><div className="letter">A</div><h3>University teams</h3><p>Students from a single university competing for their institution.</p></div>
@@ -95,8 +97,7 @@ export default function Home() {
       {/* ---------------- key dates */}
       <section className="section">
         <div className="section-head reveal">
-          <div><div className="eyebrow">04 · Key dates</div><h2>Mark the calendar.</h2></div>
-          <p>Orders can be placed before the start: they are executed at the close of the first day.</p>
+          <div><div className="eyebrow">03 · Key dates</div><h2>Mark the calendar.</h2></div>
         </div>
         <ol className="dates reveal">
           <li><div className="when">{s ? date(s.registration_deadline) : "15 Nov 2026"}</div><h3>Registration</h3><p>Universities confirm their teams and presidents.</p></li>

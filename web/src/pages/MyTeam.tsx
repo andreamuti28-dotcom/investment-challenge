@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { callFunction, errText, supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { loadCalendar, must, useLoad } from "../lib/data";
 import { date, dateTime, eur, num, pct, signClass } from "../lib/format";
 import { Loading, Notice, Stat, Tabs } from "../components/ui";
 import { LineChart } from "../components/LineChart";
+import { StockChart } from "../components/StockChart";
 
 interface Position {
   id: number; symbol: string; currency: string; side: "long" | "short"; quantity: number; entry_date: string; entry_price: number;
@@ -78,6 +79,7 @@ export default function MyTeam() {
 
 function Portfolio({ d }: { d: any }) {
   const open: Position[] = d.positions.filter((p: Position) => !p.exit_date);
+  const [chart, setChart] = useState<number | null>(null);
   const m = d.metrics;
   const subsTotal = d.subs.reduce((a: number, s: any) => a + Number(s.total_eur ?? 0), 0);
   const cap = Number(d.settings.capital);
@@ -117,10 +119,11 @@ function Portfolio({ d }: { d: any }) {
         {open.length === 0 ? <p className="muted">No open positions.</p> : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Ccy</th><th>Entry</th><th className="num">Entry price</th><th className="num">Last price</th><th className="num">Value (EUR)</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th><th className="num">Stop level</th></tr></thead>
+              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Ccy</th><th>Entry</th><th className="num">Entry price</th><th className="num">Last price</th><th className="num">Value (EUR)</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th><th className="num">Stop level</th><th /></tr></thead>
               <tbody>
                 {open.map((p) => (
-                  <tr key={p.id}>
+                  <Fragment key={p.id}>
+                  <tr className="clickable" onClick={() => setChart(chart === p.id ? null : p.id)}>
                     <td><b>{p.symbol}</b><div className="muted small">{d.instruments[p.symbol]?.name}</div></td>
                     <td><span className={`badge ${p.side}`}>{p.side}</span></td>
                     <td className="num">{num(p.quantity, 0)}</td><td>{p.currency}</td><td>{date(p.entry_date)}</td>
@@ -129,7 +132,12 @@ function Portfolio({ d }: { d: any }) {
                     <td className={`num ${signClass(p.pnl_local)}`}>{num(p.pnl_local)}</td>
                     <td className={`num ${signClass(p.pnl_eur)}`}>{eur(p.pnl_eur)}</td>
                     <td className="num">{p.side === "short" ? num(Number(p.entry_price) * (1 + Number(d.settings.stop_threshold)), 4) : "–"}</td>
+                    <td><button className="secondary small chart-toggle" aria-expanded={chart === p.id}>{chart === p.id ? "Hide chart" : "Chart"}</button></td>
                   </tr>
+                  {chart === p.id && (
+                    <tr className="chart-row"><td colSpan={12}><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></td></tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -138,7 +146,7 @@ function Portfolio({ d }: { d: any }) {
       </div>
 
       <div className="card">
-        <h3>Your portfolio vs MSCI World</h3>
+        <h3>Your portfolio value vs MSCI World</h3>
         <LineChart
           title="Total return of the team compared with the MSCI World"
           yFormat={(v) => pct(v, 1)}
@@ -273,6 +281,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
           {sel && (
             <div className="stack" style={{ marginTop: 16 }}>
               <div><b>{sel.symbol}</b> · {sel.name} <span className="muted small">{sel.exchange} · {sel.currency}{sel.lastPrice ? ` · last ${num(sel.lastPrice, 4)}` : ""}</span></div>
+              <StockChart symbol={sel.symbol} />
               {timing && (
                 <p className="small" style={{ margin: 0 }}>
                   Execution at the close of <b>{date(timing.exec_date)}</b>. You can change or cancel it until {dateTime(timing.cutoff_at)}.
@@ -364,6 +373,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
 
 function History({ d }: { d: any }) {
   const closed: Position[] = d.positions.filter((p: Position) => p.exit_date);
+  const [chart, setChart] = useState<number | null>(null);
   return (
     <>
       <div className="card">
@@ -381,12 +391,16 @@ function History({ d }: { d: any }) {
         <h3>Closed positions</h3>
         {closed.length === 0 ? <p className="muted">None yet.</p> : (
           <div className="table-wrap"><table>
-            <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Entry</th><th className="num">Entry price</th><th>Exit</th><th className="num">Exit price</th><th>Reason</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th></tr></thead>
+            <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Entry</th><th className="num">Entry price</th><th>Exit</th><th className="num">Exit price</th><th>Reason</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th><th /></tr></thead>
             <tbody>{closed.map((p) => (
-              <tr key={p.id}><td>{p.symbol}</td><td><span className={`badge ${p.side}`}>{p.side}</span></td><td className="num">{num(p.quantity, 0)}</td>
+              <Fragment key={p.id}>
+              <tr className="clickable" onClick={() => setChart(chart === p.id ? null : p.id)}><td>{p.symbol}</td><td><span className={`badge ${p.side}`}>{p.side}</span></td><td className="num">{num(p.quantity, 0)}</td>
                 <td>{date(p.entry_date)}</td><td className="num">{num(p.entry_price, 4)}</td><td>{date(p.exit_date)}</td><td className="num">{num(p.exit_price, 4)}</td>
                 <td>{p.exit_reason === "stop" ? <span className="badge rejected">stop -50%</span> : p.exit_reason}</td>
-                <td className={`num ${signClass(p.pnl_local)}`}>{num(p.pnl_local)}</td><td className={`num ${signClass(p.pnl_eur)}`}>{eur(p.pnl_eur)}</td></tr>
+                <td className={`num ${signClass(p.pnl_local)}`}>{num(p.pnl_local)}</td><td className={`num ${signClass(p.pnl_eur)}`}>{eur(p.pnl_eur)}</td>
+                <td><button className="secondary small chart-toggle">{chart === p.id ? "Hide chart" : "Chart"}</button></td></tr>
+              {chart === p.id && <tr className="chart-row"><td colSpan={11}><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></td></tr>}
+              </Fragment>
             ))}</tbody>
           </table></div>
         )}

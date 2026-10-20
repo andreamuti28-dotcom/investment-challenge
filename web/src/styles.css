@@ -301,3 +301,16 @@ button.linklike:hover:not(:disabled) { background: none; color: #fff; border: 0;
   .card { padding: 18px; }
   .sponsor-pill .long { display: none; }
 }
+
+/* participating associations (hero) */
+.partners { margin: 4px 0 30px; max-width: 600px; }
+.partners-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+.partners-soon { color: #c9d0da; font-size: 15px; padding: 14px 0; border-top: 1px solid rgba(255, 255, 255, 0.14); border-bottom: 1px solid rgba(255, 255, 255, 0.14); }
+.partners-logos { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; }
+.partners-logos img { height: 44px; width: auto; max-width: 150px; object-fit: contain; filter: grayscale(1) brightness(1.6); opacity: 0.85; transition: opacity 0.2s, filter 0.2s; }
+.partners-logos a:hover img { opacity: 1; filter: none; }
+.section-head > div:only-child { grid-column: 1 / -1; }
+/* charts inside tables */
+tr.chart-row > td { background: var(--bg-2); padding: 18px 20px; }
+tr.clickable { cursor: pointer; }
+.chart-toggle { white-space: nowrap; }

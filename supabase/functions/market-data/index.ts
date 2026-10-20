@@ -1,6 +1,6 @@
 // Stock search and validation for logged-in users.
-// Body: { action: "search", q } | { action: "validate", symbol }
-import { searchEquities, validateSymbol } from "../_shared/marketdata.ts";
+// Body: { action: "search", q } | { action: "validate", symbol } | { action: "history", symbol, from? }
+import { fetchChart, searchEquities, validateSymbol } from "../_shared/marketdata.ts";
 import { caller, cors, env, json, serviceHeaders } from "../_shared/http.ts";
 
 Deno.serve(async (req) => {
@@ -40,6 +40,17 @@ Deno.serve(async (req) => {
       });
       if (!r.ok) return json({ error: `Could not save instrument: ${await r.text()}` }, 500);
       return json({ instrument: (await r.json())[0], lastPrice: v.lastPrice });
+    }
+    if (body.action === "history") {
+      // daily closes for the price chart of a stock (not dividend-adjusted, main currency unit)
+      const symbol = String(body.symbol ?? "").trim().toUpperCase();
+      if (!/^[A-Z0-9.\-^=]{1,20}$/.test(symbol)) return json({ error: "Invalid symbol" }, 400);
+      const min = new Date(Date.now() - 2 * 365 * 86400_000).toISOString().slice(0, 10);
+      const from = typeof body.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.from) && body.from > min
+        ? body.from
+        : new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+      const c = await fetchChart(symbol, from);
+      return json({ symbol, name: c.name, currency: c.currency, prices: c.prices });
     }
     return json({ error: "Unknown action" }, 400);
   } catch (e) {

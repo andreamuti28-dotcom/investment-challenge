@@ -91,10 +91,7 @@ export default function App() {
       </main>
       <footer className="site">
         <div className="inner">
-          <span>
-            Interuniversity Investment Challenge 2026/27 · Organiser: Andrea Muti · Sponsored by{" "}
-            <a href={SPONSOR_URL} target="_blank" rel="noreferrer">WeFocusBuddy</a>
-          </span>
+          <span>Sponsored by <a href={SPONSOR_URL} target="_blank" rel="noreferrer">WeFocusBuddy</a></span>
           <span className="footer-links">
             <NavLink to="/leaderboard">Leaderboard</NavLink>
             <NavLink to="/privacy">Privacy</NavLink>
