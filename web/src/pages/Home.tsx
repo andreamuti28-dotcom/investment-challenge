@@ -42,11 +42,10 @@ function SponsorCard() {
       <span className="sc-mark" aria-hidden="true"><i /><i /></span>
       <span className="sc-body">
         <span className="sc-top"><span className="sc-eyebrow">Official sponsor</span><span className="sc-free">Free with a university e-mail</span></span>
-        <span className="sc-name">WeFocusBuddy</span>
+        <span className="sc-head"><span className="sc-name">WeFocusBuddy</span><span className="sc-cta">Get free access <span aria-hidden="true">↗</span></span></span>
         <span className="sc-what">Study and work with focus: book a one-to-one online coworking session with another student and get things done together.</span>
         <span className="sc-perk">Sign up with your <b>university e-mail</b> and it&apos;s completely free.</span>
       </span>
-      <span className="sc-cta">Get free access <span aria-hidden="true">↗</span></span>
     </a>
   );
 }
@@ -87,9 +86,11 @@ export default function Home() {
             <div className="hero-facts">
               <span>{capital} per team</span><span>Long &amp; short</span><span>Daily close</span><span>6 months</span>
             </div>
+          </div>
+          <div className="hero-side">
+            <AuthPanel />
             <SponsorCard />
           </div>
-          <AuthPanel />
         </div>
         <a className="scroll-cue" href="#how">Discover the challenge ↓</a>
       </section>
