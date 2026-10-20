@@ -18,13 +18,7 @@ interface Order {
   status: string; reject_reason: string | null; executed_date: string | null; executed_price: number | null; created_at: string;
   exec_date: string | null; cutoff_at: string | null;
 }
-interface Transfer {
-  id: string; month_n: number; currency: string; eur_amount: number; status: string; rate: number | null; executed_date: string | null;
-  reject_reason: string | null; exec_date: string | null; cutoff_at: string | null; created_at: string;
-}
 interface Instrument { symbol: string; name: string | null; exchange: string | null; currency: string }
-
-const CURRENCIES = ["USD", "GBP", "CHF", "JPY", "CAD", "AUD", "HKD", "SEK", "NOK", "DKK", "PLN", "KRW", "INR", "BRL", "SGD", "ZAR", "MXN", "CNY", "ILS", "TRY", "CZK", "HUF", "NZD"];
 
 /** Portfolio area. Teams see their own; the organiser opens any team with teamId and acts for it. */
 export default function MyTeam({ teamId }: { teamId?: string } = {}) {
@@ -39,12 +33,11 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
   const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "team" | "account">("portfolio");
   const q = useLoad(async () => {
     if (!team) return null;
-    const [cal, pos, sub, orders, transfers, nav, bench, met, instr, fx] = await Promise.all([
+    const [cal, pos, sub, orders, nav, bench, met, instr, fx] = await Promise.all([
       loadCalendar(),
       must(supabase.from("positions").select("*").eq("team_id", team.id).order("entry_date")),
       must(supabase.from("subportfolios").select("*").eq("team_id", team.id)),
       must(supabase.from("orders").select("*").eq("team_id", team.id).order("created_at", { ascending: false })),
-      must(supabase.from("transfer_orders").select("*").eq("team_id", team.id).order("created_at", { ascending: false })),
       must(supabase.from("nav_daily").select("date,nav_eur").eq("team_id", team!.id).order("date")),
       must(supabase.from("benchmark_daily").select("date,value_eur").order("date")),
       supabase.from("leaderboard").select("*").eq("team_id", team!.id).maybeSingle(),
@@ -58,7 +51,6 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
       positions: pos as Position[],
       subs: sub as any[],
       orders: orders as Order[],
-      transfers: transfers as Transfer[],
       nav: nav as any[],
       bench: bench as any[],
       metrics: met.data as any,
@@ -112,7 +104,7 @@ function Portfolio({ d }: { d: any }) {
 
       <div className="card">
         <h3>Sub-portfolios by currency</h3>
-        <p className="muted small">Cash can be negative: shorts and purchases are financed in the currency of the stock (no margin, no interest). Totals are converted at the ECB reference rate.</p>
+        <p className="muted small">Cash can be negative: shorts and purchases are financed in the currency of the stock (no margin, no interest). Each currency is a separate sub-portfolio: no conversion between currencies. The euro totals are indicative, at the ECB reference rate of the day.</p>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Currency</th><th className="num">Cash</th><th className="num">Positions</th><th className="num">Total (local)</th><th className="num">ECB rate</th><th className="num">Total (EUR)</th></tr></thead>
@@ -193,8 +185,6 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const [qty, setQty] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "err" | "warn"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [tc, setTc] = useState("USD");
-  const [ta, setTa] = useState("");
 
   // holdings now, plus the effect of pending orders in the order they were placed
   const held = useMemo(() => {
@@ -209,7 +199,6 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   }, [d]);
 
   const pending: Order[] = (d.orders as Order[]).filter((o) => o.status === "pending");
-  const transfers: Transfer[] = (d.transfers as Transfer[]).filter((t) => t.status === "pending");
   const over = new Date().toISOString().slice(0, 10) > d.settings.end_date;
 
   async function loadTiming(symbol: string) {
@@ -261,7 +250,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     setSel(null); setQty(""); setQuery(""); setTiming(null);
     await reload();
   }
-  async function cancel(fn: "cancel_order" | "cancel_transfer", id: string) {
+  async function cancel(fn: "cancel_order", id: string) {
     const { error } = await supabase.rpc(d.adminView ? `${fn}_admin` : fn, { p_id: id });
     setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: "Cancelled." });
     await reload();
@@ -392,31 +381,6 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
         </div>
       </div>
 
-      <div className="card">
-        <h3>Currency transfers (optional)</h3>
-        <p className="muted small">Convert euro into another currency sub-portfolio at the ECB reference rate of the day (transfers placed after 14:00 Rome time, or at the weekend, use the next day's rate). A negative amount converts back into euro. Not required to buy foreign stocks.</p>
-        <div className="row">
-          <div className="field narrow"><label htmlFor="tc">Currency</label><select id="tc" value={tc} onChange={(e) => setTc(e.target.value)}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></div>
-          <div className="field narrow"><label htmlFor="ta">EUR amount</label><input id="ta" inputMode="decimal" value={ta} onChange={(e) => setTa(e.target.value.replace(/[^0-9.\-]/g, ""))} /></div>
-          <button style={{ alignSelf: "flex-end" }} disabled={!Number(ta)} onClick={async () => {
-            const { data, error } = d.adminView
-              ? await supabase.rpc("place_transfer_admin", { p_team: d.teamId, p_currency: tc, p_eur_amount: Number(ta) })
-              : await supabase.rpc("place_transfer", { p_currency: tc, p_eur_amount: Number(ta) });
-            if (error) setMsg({ kind: "err", text: errText(error) });
-            else { setTa(""); setMsg({ kind: "ok", text: `Transfer saved: ECB rate of ${date((data as Transfer).exec_date)}.` }); }
-            await reload();
-          }}>Add transfer</button>
-        </div>
-        {transfers.length > 0 && (
-          <div className="table-wrap" style={{ marginTop: 12 }}><table>
-            <thead><tr><th>Currency</th><th className="num">EUR amount</th><th>ECB rate of</th><th /></tr></thead>
-            <tbody>{transfers.map((t) => (
-              <tr key={t.id}><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td><td>{date(t.exec_date)}</td>
-                <td>{editable(t.cutoff_at) ? <button className="danger small" onClick={() => cancel("cancel_transfer", t.id)}>Cancel</button> : <span className="badge pending">locked</span>}</td></tr>
-            ))}</tbody>
-          </table></div>
-        )}
-      </div>
     </>
   );
 }
@@ -451,18 +415,6 @@ function History({ d }: { d: any }) {
                 <td><button className="secondary small chart-toggle">{chart === p.id ? "Hide chart" : "Chart"}</button></td></tr>
               {chart === p.id && <tr className="chart-row"><td colSpan={11}><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></td></tr>}
               </Fragment>
-            ))}</tbody>
-          </table></div>
-        )}
-      </div>
-      <div className="card">
-        <h3>Currency transfers</h3>
-        {d.transfers.length === 0 ? <p className="muted">None.</p> : (
-          <div className="table-wrap"><table>
-            <thead><tr><th>Placed</th><th>Currency</th><th className="num">EUR amount</th><th>Status</th><th className="num">ECB rate</th><th>Executed</th></tr></thead>
-            <tbody>{(d.transfers as Transfer[]).map((t) => (
-              <tr key={t.id}><td className="small">{dateTime(t.created_at)}</td><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td>
-                <td><span className={`badge ${t.status}`}>{t.status}</span></td><td className="num">{num(t.rate, 4)}</td><td>{date(t.executed_date)}</td></tr>
             ))}</tbody>
           </table></div>
         )}

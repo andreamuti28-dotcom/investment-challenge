@@ -17,7 +17,7 @@ Costo: zero (Supabase Free, GitHub Pages, GitHub). Paghi solo un eventuale domin
 | `supabase/functions/_shared/core.ts` | ovunque | Il motore di calcolo, puro e testato |
 | `.github/workflows/` | GitHub Actions | Pubblicazione automatica su Supabase, piano B del motore |
 
-Regole implementate: ordini eseguiti al prezzo di chiusura del giorno in cui vengono inseriti, sulla borsa del titolo (dopo la chiusura di quella borsa, o nel weekend, al close del giorno di borsa successivo; prima dell'avvio al close del primo giorno); fino alla chiusura l'ordine si può annullare; trasferimenti di valuta al cambio BCE del giorno (entro le 14:00 di Roma); stop short a +50% con perdita bloccata al 50% anche in caso di gap (lo stop viene controllato prima degli ordini); sotto-portafogli per valuta con cassa che può essere negativa, senza margini e interessi; dividendi accreditati sulle long e addebitati sulle short; split; conversione in euro ai cambi BCE; benchmark SWDA in USD convertito in euro; classifica per rendimento totale in euro, separata per competizione, con Sharpe, Sortino, volatilità, beta, tracking error, max drawdown, Calmar, operazioni, peso massimo, HHI, esposizione valutaria e violazioni.
+Regole implementate: ordini eseguiti al prezzo di chiusura del giorno in cui vengono inseriti, sulla borsa del titolo (dopo la chiusura di quella borsa, o nel weekend, al close del giorno di borsa successivo; prima dell'avvio al close del primo giorno); fino alla chiusura l'ordine si può annullare; nessun trasferimento tra valute: ogni valuta è un sotto-portafoglio separato (la conversione ufficiale la fa l'organizzatore a fine challenge); stop short a +50% con perdita bloccata al 50% anche in caso di gap (lo stop viene controllato prima degli ordini); sotto-portafogli per valuta con cassa che può essere negativa, senza margini e interessi; dividendi accreditati sulle long e addebitati sulle short; split; controvalore in euro indicativo ai cambi BCE; benchmark SWDA.L (GBP) convertito in euro; classifica per rendimento totale in euro, separata per competizione, con Sharpe, Sortino, volatilità, beta, tracking error, max drawdown, Calmar, operazioni, peso massimo, HHI, esposizione valutaria e violazioni.
 
 Il motore ricalcola sempre tutto da zero partendo da ordini, prezzi e cambi. Ogni correzione (un prezzo inserito a mano, un ordine respinto) si propaga da sola alla corsa successiva.
 
@@ -113,7 +113,7 @@ Se al punto 2 compare "Market data unavailable", Yahoo sta rifiutando le richies
 - Ogni sera ricevi il riepilogo su Telegram. Se un titolo non ha prezzi o una valuta non è pubblicata dalla BCE, inserisci il valore in Admin > Market data e premi "Run engine".
 - Violazioni (art. 13): campo Violations in Admin > Teams. Un ordine può essere respinto da Admin > Orders.
 - Il risk-free (2% di default) si cambia in Admin > Calendar & settings.
-- Admin > Export scarica i CSV per una verifica indipendente con il file Excel.
+- Admin > Export: report Excel formattati (intera challenge o singolo team: riepilogo, sotto-portafogli per valuta, posizioni aperte e chiuse, ordini, performance mensile e giornaliera, movimenti di cassa, con formule vive) e i CSV grezzi per una verifica indipendente.
 - I portafogli dei team restano privati fino al 31 maggio 2027, poi diventano pubblici in automatico.
 
 ## Sviluppo locale (facoltativo)

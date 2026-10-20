@@ -53,7 +53,8 @@ export function toEngineInput(db: any): EngineInput {
       createdAt: o.created_at,
       execDate: o.exec_date ?? null,
     })),
-    transfers: db.transfers.map((t: any) => ({
+    // currency transfers are disabled: every currency is a separate sub-portfolio
+    transfers: ([] as any[]).map((t: any) => ({
       id: t.id,
       teamId: t.team_id,
       monthN: t.month_n,
@@ -137,7 +138,6 @@ export async function runOnce(
 
       const ccys = new Set<string>([settings.benchmark_currency]);
       for (const i of db.instruments) ccys.add(i.currency);
-      for (const t of db.transfers) ccys.add(t.currency);
       ccys.delete("EUR");
       const lastEcb = Object.values(db.last_ecb ?? {}) as string[];
       const ecbFrom = lastEcb.length ? addDays(lastEcb.sort()[0], -10) : addDays(settings.start_date, -14);

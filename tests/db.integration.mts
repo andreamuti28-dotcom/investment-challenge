@@ -19,7 +19,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -96,10 +96,7 @@ await db.exec(`update challenge_settings set end_date = '2027-05-31'`);
 await as("authenticated", U2, "select place_order('ENI.MI','open','long',10)");
 const u2o = await as("authenticated", U2, "select symbol from orders where status='pending'");
 ok("team sees only its own orders", u2o.rows.length === 1);
-await as("authenticated", U2, "select place_transfer('usd', 10000)");
-const tr = await as("authenticated", U2, "select exec_date::text d from transfer_orders");
-ok("transfer gets an execution date", (tr.rows[0] as any).d === "2026-12-01");
-await expectErr("EUR transfer rejected", () => as("authenticated", U2, "select place_transfer('EUR', 5)"), /Invalid currency/);
+await expectErr("currency transfers disabled", () => as("authenticated", U2, "select place_transfer('USD', 5)"), /not available/);
 
 // --- access codes: organiser only
 await db.query(`insert into team_access (team_id, user_id, code) values ($1, $2, 'ABCD-EFGH-JKLM')`, ["10000000-0000-0000-0000-000000000001", U1]);
@@ -185,14 +182,14 @@ await as("service_role", null, `select upsert_market_data($1::jsonb)`, [JSON.str
 // --- engine round trip through SQL
 const inp = await as("service_role", null, "select engine_input() as j");
 const input = toEngineInput((inp.rows[0] as any).j);
-ok("engine_input has 2 teams / 3 orders / transfers", input.teams.length === 2 && input.orders.length === 4 && input.transfers.length === 1, JSON.stringify([input.teams.length, input.orders.length, input.transfers.length]));
+ok("engine_input has 2 teams / 4 orders / transfers ignored", input.teams.length === 2 && input.orders.length === 4 && input.transfers.length === 0, JSON.stringify([input.teams.length, input.orders.length, input.transfers.length]));
 const out = runEngine(input, "2027-01-29");
 await as("service_role", null, "select engine_write($1::jsonb)", [JSON.stringify(out)]);
 const nav = await db.query(`select t.name, n.month_n, round(n.nav_eur,2) v from nav_monthly n join teams t on t.id=n.team_id order by 1,2`);
 const m = Object.fromEntries((nav.rows as any[]).map((r) => [`${r.name}${r.month_n}`, Number(r.v)]));
 ok("Bicocca NAV m1 998909.09", m.Bicocca1 === 998909.09, String(m.Bicocca1));
 ok("Bicocca NAV m2 996680.00", m.Bicocca2 === 996680.0, String(m.Bicocca2));
-ok("Leon NAV m2 1000300.00", m.Leon2 === 1000300.0, String(m.Leon2));
+ok("Leon NAV m2 1001500.00 (no currency transfer)", m.Leon2 === 1001500.0, String(m.Leon2));
 const ost = await db.query(`select symbol, month_n, status, reject_source, executed_price from orders order by month_n, symbol`);
 console.log(ost.rows);
 const pos1 = await as("authenticated", U1, "select symbol, exit_reason from positions");
@@ -200,7 +197,7 @@ ok("team sees only its own positions", pos1.rows.length === 2);
 const pos0 = await as("anon", null, "select * from positions");
 ok("positions private during the challenge", pos0.rows.length === 0);
 const sp = await as("authenticated", U2, "select currency, round(total_eur,2) t from subportfolios order by 1");
-ok("Leon sub-portfolios", JSON.stringify(sp.rows) === JSON.stringify([{ currency: "EUR", t: "991500.00" }, { currency: "USD", t: "8800.00" }].map((x) => ({ ...x, t: x.t }))), JSON.stringify(sp.rows));
+ok("Leon sub-portfolios", JSON.stringify(sp.rows) === JSON.stringify([{ currency: "EUR", t: "1001500.00" }].map((x) => ({ ...x, t: x.t }))), JSON.stringify(sp.rows));
 await as("service_role", null, `select engine_log('ok','2027-01-29','test','log','[]'::jsonb)`);
 const lr = await as("anon", null, "select status from last_engine_run");
 ok("anon sees last run status", (lr.rows[0] as any)?.status === "ok");

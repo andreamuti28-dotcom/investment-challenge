@@ -270,20 +270,19 @@ function Orders() {
   const [month, setMonth] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const q = useLoad(async () => {
-    const [orders, transfers, teams, settings] = await Promise.all([
+    const [orders, teams, settings] = await Promise.all([
       must(supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(5000)),
-      must(supabase.from("transfer_orders").select("*").order("created_at", { ascending: false })),
       must(supabase.from("teams").select("id,name")),
       must(supabase.from("challenge_settings").select("start_date,end_date").eq("id", 1).single()),
     ]);
-    return { orders: orders as any[], transfers: transfers as any[], teamName: Object.fromEntries((teams as any[]).map((t) => [t.id, t.name])), months: calendarMonths((settings as any).start_date, (settings as any).end_date) };
+    return { orders: orders as any[], teamName: Object.fromEntries((teams as any[]).map((t) => [t.id, t.name])), months: calendarMonths((settings as any).start_date, (settings as any).end_date) };
   });
   const [msg, setMsg] = useState("");
   const rows = useMemo(() => (q.data?.orders ?? []).filter((o) => (month === "all" || String(o.month_n) === month) && (status === "all" || o.status === status)), [q.data, month, status]);
   if (q.error) return <Notice kind="err">{q.error}</Notice>;
   if (!q.data) return <Loading />;
   const d = q.data;
-  async function setOrder(table: "orders" | "transfer_orders", id: string, patch: Record<string, unknown>) {
+  async function setOrder(table: "orders", id: string, patch: Record<string, unknown>) {
     const { error } = await supabase.from(table).update(patch).eq("id", id);
     setMsg(error ? errText(error) : "Saved. Results update at the next engine run (or run it now from the Engine tab).");
     q.reload();
@@ -313,19 +312,6 @@ function Orders() {
                 )}
               </td>
             </tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <h3 style={{ marginTop: 24 }}>Currency transfers</h3>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Team</th><th>ECB rate of</th><th>Currency</th><th className="num">EUR</th><th>Status</th><th className="num">Rate</th><th /></tr></thead>
-          <tbody>{d.transfers.map((t: any) => (
-            <tr key={t.id}><td>{d.teamName[t.team_id]}</td><td>{date(t.exec_date)}</td><td>{t.currency}</td><td className="num">{num(t.eur_amount)}</td>
-              <td><span className={`badge ${t.status}`}>{t.status}</span></td><td className="num">{num(t.rate, 4)}</td>
-              <td>{t.reject_source !== "admin" && t.status !== "cancelled"
-                ? <button className="danger small" onClick={() => setOrder("transfer_orders", t.id, { status: "rejected", reject_source: "admin", reject_reason: "Rejected by the organiser" })}>Reject</button>
-                : <button className="secondary small" onClick={() => setOrder("transfer_orders", t.id, { status: "pending", reject_source: null, reject_reason: null })}>Restore</button>}</td></tr>
           ))}</tbody>
         </table>
       </div>
@@ -546,18 +532,42 @@ function Export() {
   const items: [string, () => Promise<any[]>][] = [
     ["leaderboard", async () => must(supabase.from("leaderboard").select("*"))],
     ["orders", async () => must(supabase.from("orders").select("*, teams(name)").order("created_at"))],
-    ["transfers", async () => must(supabase.from("transfer_orders").select("*, teams(name)").order("created_at"))],
     ["positions", async () => must(supabase.from("positions").select("*, teams(name)").order("entry_date"))],
     ["subportfolios", async () => must(supabase.from("subportfolios").select("*, teams(name)"))],
     ["nav_monthly", async () => must(supabase.from("nav_monthly").select("*, teams(name)").order("month_n"))],
     ["nav_daily", async () => must(supabase.from("nav_daily").select("*, teams(name)").order("date").limit(50000))],
     ["cash_ledger", async () => must(supabase.from("cash_ledger").select("*, teams(name)").order("date").limit(50000))],
   ];
+  const teams = useLoad(async () => must(supabase.from("teams").select("id,name,competition,university").order("name")));
+  const [team, setTeam] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  async function excel(id?: string) {
+    setBusy(id ?? "all"); setMsg("");
+    try { const { downloadReport } = await import("../lib/excel"); await downloadReport(id); }
+    catch (e) { setMsg(errText(e)); }
+    setBusy(null);
+  }
   return (
+    <>
     <div className="card">
-      <h3>Download CSV</h3>
-      <p className="muted small">Useful for an independent check with the organiser's Excel workbook. Opens in Excel (comma separated).</p>
+      <h3>Excel reports</h3>
+      <p className="muted small">Formatted workbooks with summary, sub-portfolios by currency, open and closed positions, orders, monthly and daily performance, cash movements. Totals, returns and P&amp;L are live Excel formulas.</p>
       {msg && <Notice kind="err">{msg}</Notice>}
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <button disabled={!!busy} onClick={() => excel()}>{busy === "all" ? "Preparing…" : "Whole challenge (all teams)"}</button>
+        <div className="field narrow" style={{ minWidth: 240 }}>
+          <label htmlFor="xt">Single team</label>
+          <select id="xt" value={team} onChange={(e) => setTeam(e.target.value)}>
+            <option value="">Choose a team…</option>
+            {(teams.data as any[] ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}{t.university ? ` · ${t.university}` : ""} ({t.competition})</option>)}
+          </select>
+        </div>
+        <button className="secondary" disabled={!team || !!busy} onClick={() => excel(team)}>{busy === team && team ? "Preparing…" : "Download team report"}</button>
+      </div>
+    </div>
+    <div className="card">
+      <h3>Raw data (CSV)</h3>
+      <p className="muted small">One table per file, for an independent check. Opens in Excel (comma separated).</p>
       <div className="row">
         {items.map(([name, f]) => (
           <button key={name} className="secondary" onClick={async () => {
@@ -570,5 +580,6 @@ function Export() {
       </div>
       <p className="muted small" style={{ marginTop: 12 }}>Total return values are fractions (0.0123 = {pct(0.0123)}).</p>
     </div>
+    </>
   );
 }
