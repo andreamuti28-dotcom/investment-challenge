@@ -10,8 +10,7 @@ export default function Admin() {
   const [tab, setTab] = useState<Tab>("teams");
   return (
     <>
-      <div className="eyebrow">Organiser</div>
-      <h1 style={{ fontSize: 38 }}>Admin panel</h1>
+      <div className="page-head"><div className="eyebrow">Organiser</div><h1>Admin panel</h1></div>
       <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["accounts", "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
       {tab === "teams" && <Teams />}
       {tab === "accounts" && <Accounts />}
@@ -33,31 +32,45 @@ async function refreshResults() {
 
 function Teams() {
   const q = useLoad(async () => {
-    const [teams, contacts, access] = await Promise.all([
+    const [teams, contacts, access, members] = await Promise.all([
       must(supabase.from("teams").select("*").order("competition").order("name")),
       must(supabase.from("team_contacts").select("*")),
       must(supabase.from("team_access").select("team_id,code,updated_at")),
+      must(supabase.from("team_members").select("team_id,role")),
     ]);
     const c = Object.fromEntries((contacts as any[]).map((x) => [x.team_id, x]));
     const a = Object.fromEntries((access as any[]).map((x) => [x.team_id, x]));
-    return (teams as any[]).map((t) => ({ ...t, contact: c[t.id] ?? {}, access: a[t.id] ?? null }));
+    const m = members as any[];
+    return (teams as any[]).map((t) => ({
+      ...t, contact: c[t.id] ?? {}, access: a[t.id] ?? null,
+      members: m.filter((x) => x.team_id === t.id).length,
+      presidentRegistered: m.some((x) => x.team_id === t.id && x.role === "president"),
+    }));
   });
-  const [form, setForm] = useState({ name: "", competition: "A", university: "", contact_name: "", contact_email: "" });
+  const empty = { name: "", competition: "A", university: "", president_email: "", contact_name: "" };
+  const [form, setForm] = useState(empty);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: ReactNode } | null>(null);
   const [busy, setBusy] = useState(false);
+  const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.president_email.trim());
 
   async function addTeam() {
     setMsg(null); setBusy(true);
-    const { data, error } = await supabase.from("teams").insert({ name: form.name.trim(), competition: form.competition, university: form.university.trim() || null }).select().single();
-    if (error) { setBusy(false); return setMsg({ kind: "err", text: errText(error) }); }
-    await supabase.from("team_contacts").insert({ team_id: data.id, contact_name: form.contact_name || null, contact_email: form.contact_email || null });
+    const email = form.president_email.trim().toLowerCase();
+    const { data, error } = await supabase.from("teams").insert({
+      name: form.name.trim(), competition: form.competition, university: form.university.trim() || null, president_email: email,
+    }).select().single();
+    if (error) {
+      setBusy(false);
+      return setMsg({ kind: "err", text: /president_email/.test(error.message) ? "This president e-mail is already used by another team." : errText(error) });
+    }
+    await supabase.from("team_contacts").insert({ team_id: data.id, contact_name: form.contact_name || null, contact_email: email });
     try {
       const r = await callFunction("admin", { action: "set_team_code", teamId: data.id });
-      setMsg({ kind: "ok", text: <>Team <b>{data.name}</b> created. Access code: <span className="secret">{r.code}</span> (always visible in the table below).</> });
+      setMsg({ kind: "ok", text: <>Team <b>{data.name}</b> created. The president registers with <b>{email}</b>. Team code for the members: <span className="secret">{r.code}</span> (the president also sees it in the Team tab).</> });
     } catch (e) {
-      setMsg({ kind: "err", text: `Team created, but the access code could not be generated: ${errText(e)}. Use "Generate code" in the table.` });
+      setMsg({ kind: "err", text: `Team created, but the team code could not be generated: ${errText(e)}. Use "Generate code" in the table.` });
     }
-    setForm({ name: "", competition: "A", university: "", contact_name: "", contact_email: "" });
+    setForm(empty);
     setBusy(false);
     await q.reload();
   }
@@ -69,19 +82,19 @@ function Teams() {
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <div className="card">
         <h3>Add a team</h3>
-        <p className="muted small">An access code is generated automatically. Only you can see it: send it to the team, who will use it to sign in.</p>
+        <p className="muted small">Only the e-mail you enter here can register as the team's president. A team code is generated automatically: the president sees it and shares it with the members, who register with it.</p>
         <div className="row">
           <div className="field"><label htmlFor="tn">Team name</label><input id="tn" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
           <div className="field narrow"><label htmlFor="tcomp">Competition</label><select id="tcomp" value={form.competition} onChange={(e) => setForm({ ...form, competition: e.target.value })}><option value="A">A · University</option><option value="B">B · International</option></select></div>
           <div className="field"><label htmlFor="tu">University / composition</label><input id="tu" value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })} /></div>
-          <div className="field"><label htmlFor="tcn">Contact name</label><input id="tcn" value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} /></div>
-          <div className="field"><label htmlFor="tce">Contact email</label><input id="tce" type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} /></div>
-          <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim()} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
+          <div className="field"><label htmlFor="tpe">President e-mail</label><input id="tpe" type="email" value={form.president_email} onChange={(e) => setForm({ ...form, president_email: e.target.value })} placeholder="president@university.eu" /></div>
+          <div className="field"><label htmlFor="tcn">President name (optional)</label><input id="tcn" value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} /></div>
+          <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim() || !validEmail} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
         </div>
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Team</th><th>Comp.</th><th>University</th><th>Contact</th><th>Access code</th><th className="num">Violations</th><th /></tr></thead>
+          <thead><tr><th>Team</th><th>Comp.</th><th>President</th><th className="num">Members</th><th>Team code</th><th className="num">Violations</th><th /></tr></thead>
           <tbody>
             {q.data.map((t: any) => <TeamRow key={t.id} t={t} reload={q.reload} setMsg={setMsg} />)}
           </tbody>
@@ -94,26 +107,35 @@ function Teams() {
 function TeamRow({ t, reload, setMsg }: any) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState<string>(t.president_email ?? "");
   const code: string | null = t.access?.code ?? null;
+  async function saveEmail() {
+    const v = email.trim().toLowerCase();
+    if (v === (t.president_email ?? "")) return;
+    if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return setMsg({ kind: "err", text: "Invalid e-mail address." });
+    const { error } = await supabase.from("teams").update({ president_email: v || null }).eq("id", t.id);
+    if (error) setMsg({ kind: "err", text: /president_email/.test(error.message) ? "This e-mail is already used by another team." : errText(error) });
+    else { setMsg({ kind: "ok", text: `President e-mail of ${t.name} saved.` }); reload(); }
+  }
   async function setCode() {
-    if (code && !window.confirm(`Replace the access code of ${t.name}? The old code stops working immediately and the team is signed out.`)) return;
+    if (code && !window.confirm(`Replace the team code of ${t.name}? The old code stops working for new registrations; members already registered are not affected.`)) return;
     setBusy(true);
     try {
       const r = await callFunction("admin", { action: "set_team_code", teamId: t.id });
-      setMsg({ kind: "ok", text: <>New access code for <b>{t.name}</b>: <span className="secret">{r.code}</span></> });
+      setMsg({ kind: "ok", text: <>New team code for <b>{t.name}</b>: <span className="secret">{r.code}</span></> });
       setShow(true);
       await reload();
     } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
     setBusy(false);
   }
   async function deleteTeam() {
-    const typed = window.prompt(`This permanently deletes ${t.name}: its access code, orders, positions and results. It cannot be undone.\n\nType the team name to confirm:`);
+    const typed = window.prompt(`This permanently deletes ${t.name}: all its accounts (president and members), orders, positions and results. It cannot be undone.\n\nType the team name to confirm:`);
     if (typed === null) return;
     if (typed.trim() !== t.name) return setMsg({ kind: "err", text: "The name did not match: nothing was deleted." });
     setBusy(true);
     try {
-      await callFunction("admin", { action: "delete_team", teamId: t.id });
-      setMsg({ kind: "ok", text: `${t.name} deleted.` });
+      const r = await callFunction("admin", { action: "delete_team", teamId: t.id });
+      setMsg({ kind: "ok", text: `${t.name} deleted, with ${r.deletedAccounts} account(s).` });
       await reload();
       refreshResults();
     } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
@@ -121,15 +143,23 @@ function TeamRow({ t, reload, setMsg }: any) {
   }
   return (
     <tr>
-      <td><b>{t.name}</b></td><td>{t.competition}</td><td>{t.university}</td>
-      <td className="small">{t.contact.contact_name}<div className="muted">{t.contact.contact_email}</div></td>
+      <td><b>{t.name}</b><div className="muted small">{t.university}</div></td>
+      <td>{t.competition}</td>
+      <td style={{ minWidth: 240 }}>
+        <input aria-label={`President e-mail of ${t.name}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} onBlur={saveEmail}
+          disabled={t.presidentRegistered} style={{ minHeight: 34, padding: "6px 10px" }} />
+        <div className="small" style={{ marginTop: 4 }}>
+          {t.presidentRegistered ? <span className="badge ok">registered</span> : <span className="badge pending">waiting for registration</span>}
+        </div>
+      </td>
+      <td className="num">{t.members}</td>
       <td>
         {code ? (
           <div className="code-cell">
             <span className="secret">{show ? code : "••••-••••-••••"}</span>
             <button className="secondary small" onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button>
             <button className="secondary small" onClick={async () => { try { await navigator.clipboard.writeText(code); setMsg({ kind: "ok", text: `Code of ${t.name} copied.` }); } catch { setShow(true); } }}>Copy</button>
-            <button className="secondary small" disabled={busy} onClick={setCode}>New code</button>
+            <button className="secondary small" disabled={busy} onClick={setCode}>New</button>
           </div>
         ) : (
           <button className="small" disabled={busy} onClick={setCode}>Generate code</button>
@@ -147,29 +177,36 @@ function TeamRow({ t, reload, setMsg }: any) {
 // ------------------------------------------------------------------ accounts
 function Accounts() {
   const q = useLoad(async () => (await callFunction("admin", { action: "list_users" })).users as any[]);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: ReactNode } | null>(null);
   if (q.error) return <Notice kind="err">{q.error}</Notice>;
   if (!q.data) return <Loading />;
   return (
     <>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
-      <p className="muted small">Every account that can sign in. Deleting a team access account leaves the team and its results in place: the team can no longer sign in until you generate a new code in the Teams tab. To remove a team with all its data, use "Delete team" there.</p>
+      <p className="muted small">Every account that can sign in. Deleting a member or president removes only that person: the team and its results stay. A deleted president can register again with the same e-mail. To remove a whole team, use "Delete team" in the Teams tab.</p>
       <div className="table-wrap"><table>
-        <thead><tr><th>Account</th><th>Type</th><th>Team</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
+        <thead><tr><th>Name</th><th>E-mail</th><th>Role</th><th>Team</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
         <tbody>{q.data.map((u) => (
           <tr key={u.id}>
-            <td>{u.email ?? <span className="muted">access code</span>}{u.self && <span className="badge" style={{ marginLeft: 6 }}>you</span>}</td>
-            <td><span className={`badge ${u.kind === "admin" ? "warning" : ""}`}>{u.kind}</span></td>
+            <td>{u.name ?? "–"}{u.self && <span className="badge" style={{ marginLeft: 6 }}>you</span>}</td>
+            <td className="small">{u.email}</td>
+            <td><span className={`badge ${u.kind === "admin" || u.kind === "president" ? "president" : ""}`}>{u.kind}</span></td>
             <td>{u.team ?? "–"}</td>
             <td className="small">{date(u.createdAt)}</td>
             <td className="small">{u.lastSignIn ? dateTime(u.lastSignIn) : "never"}</td>
             <td>{!u.self && (
-              <button className="danger small" onClick={async () => {
-                const label = u.email ?? `the access account of ${u.team}`;
-                if (!window.confirm(`Delete ${label}? It cannot be undone.`)) return;
-                try { await callFunction("admin", { action: "delete_user", userId: u.id }); setMsg({ kind: "ok", text: `${label} deleted.` }); await q.reload(); }
-                catch (e) { setMsg({ kind: "err", text: errText(e) }); }
-              }}>Delete</button>
+              <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                <button className="secondary small" onClick={async () => {
+                  if (!window.confirm(`Create a new temporary password for ${u.email}? The current one stops working.`)) return;
+                  try { const r = await callFunction("admin", { action: "reset_password", userId: u.id }); setMsg({ kind: "ok", text: <>New temporary password for {u.email}: <span className="secret">{r.password}</span> Send it privately; they can change it in My team &gt; Account.</> }); }
+                  catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+                }}>Reset password</button>
+                <button className="danger small" onClick={async () => {
+                  if (!window.confirm(`Delete the account of ${u.name ?? u.email}? It cannot be undone.`)) return;
+                  try { await callFunction("admin", { action: "delete_user", userId: u.id }); setMsg({ kind: "ok", text: `${u.email} deleted.` }); await q.reload(); }
+                  catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+                }}>Delete</button>
+              </div>
             )}</td>
           </tr>
         ))}</tbody>

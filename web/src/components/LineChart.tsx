@@ -39,12 +39,12 @@ export function LineChart({ series, yFormat, title }: { series: Series[]; yForma
         }}>
         {ticks.map((v, i) => (
           <g key={i}>
-            <line x1={PL} x2={W - PR} y1={Y(v)} y2={Y(v)} stroke="#e2ddd0" />
-            <text x={PL - 8} y={Y(v) + 4} textAnchor="end" fontSize="12" fill="#5b6676">{yFormat(v)}</text>
+            <line x1={PL} x2={W - PR} y1={Y(v)} y2={Y(v)} stroke="#1f2631" />
+            <text x={PL - 8} y={Y(v) + 4} textAnchor="end" fontSize="12" fill="#8a94a3">{yFormat(v)}</text>
           </g>
         ))}
         {monthTicks.map((d) => (
-          <text key={d} x={X(d)} y={H - 12} fontSize="12" fill="#5b6676" textAnchor="middle">
+          <text key={d} x={X(d)} y={H - 12} fontSize="12" fill="#8a94a3" textAnchor="middle">
             {new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "2-digit" })}
           </text>
         ))}
@@ -54,7 +54,7 @@ export function LineChart({ series, yFormat, title }: { series: Series[]; yForma
         ))}
         {hx && (
           <g>
-            <line x1={X(hx)} x2={X(hx)} y1={PT} y2={H - PB} stroke="#0f1b2d" strokeOpacity={0.25} />
+            <line x1={X(hx)} x2={X(hx)} y1={PT} y2={H - PB} stroke="#ffffff" strokeOpacity={0.3} />
             {series.map((s) => {
               const p = s.points.filter((q) => q.x <= hx).at(-1);
               return p ? <circle key={s.name} cx={X(p.x)} cy={Y(p.y)} r={3.5} fill={s.color} /> : null;
@@ -78,4 +78,4 @@ export function LineChart({ series, yFormat, title }: { series: Series[]; yForma
   );
 }
 
-export const PALETTE = ["#1f4e8c", "#c9a227", "#1f6f43", "#a1322b", "#6b4c9a", "#0e7c86"];
+export const PALETTE = ["#7aa2ff", "#f5c451", "#3ddc97", "#ff7a7a", "#c49bff", "#38d6d0"];

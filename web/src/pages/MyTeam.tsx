@@ -26,7 +26,7 @@ const CURRENCIES = ["USD", "GBP", "CHF", "JPY", "CAD", "AUD", "HKD", "SEK", "NOK
 
 export default function MyTeam() {
   const { team } = useAuth();
-  const [tab, setTab] = useState<"portfolio" | "orders" | "history">("portfolio");
+  const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "team" | "account">("portfolio");
   const q = useLoad(async () => {
     const [cal, pos, sub, orders, transfers, nav, bench, met, instr, fx] = await Promise.all([
       loadCalendar(),
@@ -62,14 +62,16 @@ export default function MyTeam() {
 
   return (
     <>
-      <div>
-        <div className="eyebrow">Competition {team!.competition}</div>
-        <h1 style={{ fontSize: 38 }}>{team!.name}</h1>
+      <div className="page-head">
+        <div className="eyebrow">Competition {team!.competition} · {team!.role}</div>
+        <h1>{team!.name}</h1>
       </div>
-      <Tabs value={tab} onChange={setTab} items={[["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"]]} />
+      <Tabs value={tab} onChange={setTab} items={[["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["team", "Team"], ["account", "Account"]]} />
       {tab === "portfolio" && <Portfolio d={d} />}
       {tab === "orders" && <Orders d={d} reload={q.reload} />}
       {tab === "history" && <History d={d} />}
+      {tab === "team" && <TeamTab />}
+      {tab === "account" && <Account />}
     </>
   );
 }
@@ -141,8 +143,8 @@ function Portfolio({ d }: { d: any }) {
           title="Total return of the team compared with the MSCI World"
           yFormat={(v) => pct(v, 1)}
           series={[
-            { name: "Your team", color: "#1f4e8c", points: d.nav.map((n: any) => ({ x: n.date, y: Number(n.nav_eur) / cap - 1 })) },
-            { name: "MSCI World (SWDA)", color: "#5b6676", dashed: true, points: d.bench.map((b: any) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) },
+            { name: "Your team", color: "#7aa2ff", points: d.nav.map((n: any) => ({ x: n.date, y: Number(n.nav_eur) / cap - 1 })) },
+            { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, points: d.bench.map((b: any) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) },
           ]}
         />
       </div>
@@ -402,5 +404,70 @@ function History({ d }: { d: any }) {
         )}
       </div>
     </>
+  );
+}
+
+function TeamTab() {
+  const q = useLoad(async () => {
+    const { data, error } = await supabase.rpc("my_team_info");
+    if (error) throw new Error(error.message);
+    return data as { role: string; code: string | null; members: { name: string; role: string; email: string | null; joined: string }[] } | null;
+  });
+  const [copied, setCopied] = useState(false);
+  if (q.error) return <Notice kind="err">{q.error}</Notice>;
+  if (!q.data) return <Loading />;
+  const t = q.data;
+  return (
+    <div className="grid cols-2">
+      {t.role === "president" && (
+        <div className="card dark">
+          <div className="eyebrow">Team code</div>
+          <h3 style={{ marginTop: 10 }}>Invite your members</h3>
+          <p className="muted">Share this code with your team. Members choose "Member" when they register and enter it. Keep it within the team.</p>
+          <div className="row" style={{ marginTop: 16 }}>
+            <span className="code-big">{t.code ?? "not generated yet"}</span>
+            {t.code && (
+              <button className="secondary small" onClick={async () => { try { await navigator.clipboard.writeText(t.code!); setCopied(true); } catch { /* the code stays visible */ } }}>
+                {copied ? "Copied" : "Copy"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="card">
+        <h3>Members ({t.members.length})</h3>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Role</th>{t.role === "president" && <th>E-mail</th>}<th>Joined</th></tr></thead>
+          <tbody>{t.members.map((m, i) => (
+            <tr key={i}><td>{m.name}</td><td><span className={`badge ${m.role === "president" ? "president" : ""}`}>{m.role}</span></td>
+              {t.role === "president" && <td className="small">{m.email}</td>}<td className="small">{date(m.joined)}</td></tr>
+          ))}</tbody>
+        </table></div>
+        <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. To remove a member, contact the organiser.</p>
+      </div>
+    </div>
+  );
+}
+
+function Account() {
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  return (
+    <div className="card" style={{ maxWidth: 480 }}>
+      <h3>Change password</h3>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      <form className="stack" onSubmit={async (e) => {
+        e.preventDefault();
+        if (p1.length < 8) return setMsg({ kind: "err", text: "Use at least 8 characters." });
+        if (p1 !== p2) return setMsg({ kind: "err", text: "The two passwords do not match." });
+        const { error } = await supabase.auth.updateUser({ password: p1 });
+        if (error) setMsg({ kind: "err", text: error.message }); else { setMsg({ kind: "ok", text: "Password updated." }); setP1(""); setP2(""); }
+      }}>
+        <div><label htmlFor="p1">New password</label><input id="p1" type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} /></div>
+        <div><label htmlFor="p2">Repeat</label><input id="p2" type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} /></div>
+        <button type="submit">Update password</button>
+      </form>
+    </div>
   );
 }

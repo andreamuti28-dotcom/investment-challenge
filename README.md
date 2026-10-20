@@ -12,7 +12,8 @@ Costo: zero (Supabase Free, GitHub Pages, GitHub). Paghi solo un eventuale domin
 | `supabase/migrations/` | Supabase (Postgres) | Tabelle, permessi (RLS), funzioni per ordini e motore |
 | `supabase/functions/engine` | Supabase Edge Functions | Scarica prezzi (Yahoo) e cambi (BCE), ricalcola tutto, avvisa su Telegram |
 | `supabase/functions/market-data` | Supabase Edge Functions | Ricerca e validazione titoli per i team |
-| `supabase/functions/admin` | Supabase Edge Functions | Codici di accesso dei team, elenco ed eliminazione di account e team |
+| `supabase/functions/admin` | Supabase Edge Functions | Codici dei team, elenco, reset ed eliminazione di account e team |
+| `supabase/functions/register` | Supabase Edge Functions | Registrazione: presidente solo con la mail salvata dall'admin, membri con il codice del team |
 | `supabase/functions/_shared/core.ts` | ovunque | Il motore di calcolo, puro e testato |
 | `.github/workflows/` | GitHub Actions | Pubblicazione automatica su Supabase, piano B del motore |
 
@@ -23,7 +24,7 @@ Il motore ricalcola sempre tutto da zero partendo da ordini, prezzi e cambi. Ogn
 ## Test già superati
 
 - `npm test`: 17 test sul motore, tra cui l'esecuzione al close del giorno (festivi, ordini dello stesso giorno in sequenza, cambi del giorno), tra cui il caso di accettazione con 30 controlli identici al file Excel dell'organizzatore (NAV, sotto-portafogli, stop, dividendi, cambi, benchmark) e tutte le metriche di rischio confrontate con l'Excel.
-- `npm run test:db`: 52 controlli sul database (orari di chiusura per borsa e fuso, blocco dopo la chiusura, permessi sui codici di accesso, statistiche visite, transazione di scrittura) e un giro completo del motore con dati Yahoo e BCE simulati.
+- `npm run test:db`: 63 controlli sul database (ruoli presidente e membro, codici del team, orari di chiusura per borsa e fuso, blocco dopo la chiusura, permessi sui codici di accesso, statistiche visite, transazione di scrittura) e un giro completo del motore con dati Yahoo e BCE simulati.
 - Le funzioni server superano il controllo dei tipi di Deno, e l'autotest gira anche dentro la funzione pubblicata (Admin > Engine > Run self-test).
 
 Da qui non è stato possibile chiamare Yahoo Finance e la BCE dal vivo: il primo controllo reale lo fai al passo 9.
@@ -104,7 +105,8 @@ Se al punto 2 compare "Market data unavailable", Yahoo sta rifiutando le richies
 
 ## Uso durante la sfida
 
-- Dopo il 15 novembre: Admin > Teams, aggiungi ogni team (competizione A o B). Il codice di accesso (formato XXXX-XXXX-XXXX) viene generato da solo ed è visibile solo a te nella colonna Access code: invialo al team, che entra con "Team login". Se un codice viene diffuso, "New code" lo sostituisce e disconnette subito il team.
+- Dopo il 15 novembre: Admin > Teams, aggiungi ogni team (competizione A o B) con la mail del suo presidente. Solo quella mail può registrarsi come "President" dalla home. Il codice del team (XXXX-XXXX-XXXX) si genera da solo: il presidente lo vede nella scheda Team e lo gira ai membri, che si registrano come "Member" inserendolo. Tutti i membri possono inserire ordini.
+- Password dimenticata: Admin > Accounts > "Reset password" genera una password temporanea da inviare alla persona.
 - Admin > Accounts elenca tutti gli account e permette di eliminarli; "Delete team" in Admin > Teams elimina un team con codice, ordini e risultati.
 - Gli ordini vengono eseguiti dal motore al close del giorno: non devi fare nulla.
 - Admin > Visits mostra le visite anonime (solo di chi ha accettato i cookie statistici), utili per il report allo sponsor.

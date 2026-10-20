@@ -7,6 +7,7 @@ export interface Team {
   name: string;
   competition: "A" | "B";
   university: string | null;
+  role: "president" | "member";
 }
 interface AuthState {
   session: Session | null;
@@ -33,12 +34,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const [{ data: roles }, { data: mem }] = await Promise.all([
       supabase.from("user_roles").select("role").eq("user_id", s.user.id),
-      supabase.from("team_members").select("team_id").eq("user_id", s.user.id).limit(1),
+      supabase.from("team_members").select("team_id,role").eq("user_id", s.user.id).limit(1),
     ]);
     setAdmin(!!roles?.some((r) => r.role === "admin"));
     if (mem?.[0]) {
       const { data: t } = await supabase.from("teams").select("id,name,competition,university").eq("id", mem[0].team_id).single();
-      setTeam((t as Team) ?? null);
+      setTeam(t ? ({ ...(t as any), role: (mem[0] as any).role ?? "member" } as Team) : null);
     } else setTeam(null);
     setLoading(false);
   }

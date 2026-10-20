@@ -10,3 +10,6 @@ verify_jwt = false
 
 [functions.admin]
 verify_jwt = false
+
+[functions.register]
+verify_jwt = false

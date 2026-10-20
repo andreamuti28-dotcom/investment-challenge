@@ -39,7 +39,7 @@ export default function Leaderboard() {
       color: PALETTE[i % PALETTE.length],
       points: data.nav.filter((n) => n.team_id === t.team_id).map((n) => ({ x: n.date, y: Number(n.nav_eur) / cap - 1 })),
     }));
-    s.push({ name: "MSCI World (SWDA)", color: "#5b6676", dashed: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) });
+    s.push({ name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) / cap - 1 })) });
     return s;
   }, [data, rows]);
 
@@ -50,10 +50,10 @@ export default function Leaderboard() {
 
   return (
     <>
-      <div className="row spread">
+      <div className="row spread page-head">
         <div>
           <div className="eyebrow">Leaderboard</div>
-          <h1 style={{ fontSize: 38 }}>Return decides. Risk explains.</h1>
+          <h1>Return decides. Risk explains.</h1>
         </div>
         <p className="muted small">Last update: {data.run ? dateTime(data.run.finished_at) : "not yet calculated"}{data.run?.as_of ? ` · prices as of ${data.run.as_of}` : ""}</p>
       </div>

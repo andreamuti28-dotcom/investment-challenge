@@ -19,7 +19,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -107,6 +107,26 @@ ok("admin reads access codes", (await as("authenticated", ADMIN, "select code fr
 ok("team cannot read access codes", (await as("authenticated", U1, "select code from team_access")).rows.length === 0);
 ok("anon cannot read access codes", (await as("anon", null, "select code from team_access")).rows.length === 0);
 await expectErr("team cannot write access codes", () => as("authenticated", U2, `insert into team_access values ('10000000-0000-0000-0000-000000000002', '${U2}', 'X')`), /row-level security/);
+
+// --- registration roles: president by saved e-mail, members by team code
+const T1 = "10000000-0000-0000-0000-000000000001", U3 = "00000000-0000-0000-0000-000000000003", U4 = "00000000-0000-0000-0000-000000000004";
+await db.exec(`insert into auth.users values ('${U3}','Pres@Uni.it'),('${U4}','other@x'); update teams set president_email = 'pres@uni.it' where id = '${T1}'`);
+const fp = (await as("service_role", null, "select * from team_for_president('  PRES@uni.it ')")).rows[0] as any;
+ok("president e-mail found (case-insensitive), not taken yet", fp?.team_id === T1 && fp.taken === false);
+ok("unknown e-mail is not a president", (await as("service_role", null, "select * from team_for_president('x@y.z')")).rows.length === 0);
+await as("service_role", null, `select join_team('${U3}', '${T1}', 'president', 'Ada President')`);
+ok("president slot now taken", ((await as("service_role", null, "select * from team_for_president('pres@uni.it')")).rows[0] as any).taken === true);
+await expectErr("only one president per team", () => as("service_role", null, `select join_team('${U4}', '${T1}', 'president', 'Second')`), /duplicate key|unique/);
+const fc = (await as("service_role", null, "select * from team_for_code('abcd efgh-jklm')")).rows[0] as any;
+ok("team code found whatever the format", fc?.team_id === T1);
+ok("wrong team code finds nothing", (await as("service_role", null, "select * from team_for_code('ABCD-EFGH-JKLX')")).rows.length === 0);
+await expectErr("anon cannot look up team codes", () => as("anon", null, "select * from team_for_code('ABCD-EFGH-JKLM')"), /permission denied/);
+await expectErr("members cannot call join_team", () => as("authenticated", U1, `select join_team('${U4}', '${T1}', 'president', 'x')`), /permission denied/);
+const infoP = ((await as("authenticated", U3, "select my_team_info() i")).rows[0] as any).i;
+ok("president sees the team code and member e-mails", infoP.role === "president" && infoP.code === "ABCD-EFGH-JKLM" && infoP.members.some((m: any) => m.email === "u1@x"), JSON.stringify(infoP));
+const infoM = ((await as("authenticated", U1, "select my_team_info() i")).rows[0] as any).i;
+ok("member sees teammates but no code and no e-mails", infoM.role === "member" && infoM.code === null && infoM.members.length === 2 && infoM.members.every((m: any) => m.email === null));
+ok("no team -> no info", ((await as("authenticated", U4, "select my_team_info() i")).rows[0] as any).i === null);
 
 // --- anonymous visit statistics
 const V = "20000000-0000-0000-0000-000000000001";

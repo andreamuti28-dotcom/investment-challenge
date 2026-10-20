@@ -1,7 +1,5 @@
-// Team access codes. A team signs in with its code only: the code is the password of a
-// dedicated account whose e-mail address is derived from the code itself, so the website can
-// sign in without asking for an e-mail. The same derivation lives in web/src/lib/access.ts.
-export const ACCESS_DOMAIN = "access.investment-challenge.app";
+// Team codes: the organiser gives each team a random code; the president shares it with the
+// members, who enter it when they register.
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 symbols, no 0/O/1/I
 
 export function newCode(): string {
@@ -13,8 +11,9 @@ export function newCode(): string {
 
 export const normalizeCode = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-export async function codeEmail(code: string): Promise<string> {
-  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`ic-team:${normalizeCode(code)}`));
-  const hex = Array.from(new Uint8Array(h), (x) => x.toString(16).padStart(2, "0")).join("");
-  return `team-${hex.slice(0, 32)}@${ACCESS_DOMAIN}`;
+export function tempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const b = new Uint8Array(14);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => chars[x % chars.length]).join("");
 }
