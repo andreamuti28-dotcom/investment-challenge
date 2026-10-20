@@ -356,3 +356,27 @@ tr.clickable { cursor: pointer; }
 
 /* the logo marquee must never widen the hero column */
 .hero-copy, .partners, .partners-marquee { min-width: 0; max-width: 100%; }
+
+/* ---------------- sponsor card (first screen) */
+.sponsor-card { position: relative; margin-top: 26px; max-width: 600px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; align-items: start; padding: 18px 20px; border-radius: 14px; text-decoration: none; color: var(--text);
+  background: linear-gradient(135deg, rgba(122, 162, 255, 0.16), rgba(61, 220, 151, 0.07) 60%, rgba(6, 8, 12, 0.5)), rgba(6, 8, 12, 0.55);
+  border: 1px solid transparent; background-clip: padding-box; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: transform 0.2s, box-shadow 0.2s; }
+.sponsor-card::before { content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: 15px; background: linear-gradient(120deg, rgba(122, 162, 255, 0.9), rgba(61, 220, 151, 0.6), rgba(255, 255, 255, 0.15)); }
+.sponsor-card::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 14px; background: #0a0d13; opacity: 0.92; }
+.sponsor-card:hover { transform: translateY(-2px); box-shadow: 0 18px 50px -20px rgba(122, 162, 255, 0.55); color: var(--text); }
+.sc-mark { position: relative; width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--pos)); display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 2px; }
+.sc-mark i { width: 11px; height: 11px; border-radius: 50%; background: #0a0d13; }
+.sc-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sc-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sc-eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent-2); }
+.sc-free { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #06120c; background: var(--pos); padding: 3px 8px; border-radius: 999px; font-weight: 700; }
+.sc-name { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -0.02em; line-height: 1.1; }
+.sc-what { font-size: 14px; color: #c9d0da; line-height: 1.45; }
+.sc-perk { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.sc-perk b { color: var(--pos); font-weight: 600; }
+.sc-cta { grid-column: 2; justify-self: start; margin-top: 8px; font-family: var(--display); font-weight: 600; font-size: 14px; color: #fff; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.3); transition: background 0.15s, border-color 0.15s; }
+.sponsor-card:hover .sc-cta { background: #fff; color: var(--ink); border-color: #fff; }
+.sponsor-free { margin-top: 14px !important; font-weight: 600; color: var(--ink) !important; }
+.sponsor-free span { display: inline-block; background: #0f7a4f; color: #fff; font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; margin-right: 6px; }
+@media (max-width: 640px) { .sponsor-card { grid-template-columns: 1fr; padding: 16px; } .sc-mark { width: 36px; height: 36px; } .sc-cta { grid-column: 1; } .sc-name { font-size: 21px; } }
+@media (prefers-reduced-motion: reduce) { .sponsor-card { transition: none; } .sponsor-card:hover { transform: none; } }

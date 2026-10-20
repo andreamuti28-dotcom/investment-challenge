@@ -36,6 +36,21 @@ function Partners() {
   );
 }
 
+function SponsorCard() {
+  return (
+    <a className="sponsor-card" href={SPONSOR_URL} target="_blank" rel="noreferrer" aria-label="WeFocusBuddy, official sponsor: free for participants with a university e-mail">
+      <span className="sc-mark" aria-hidden="true"><i /><i /></span>
+      <span className="sc-body">
+        <span className="sc-top"><span className="sc-eyebrow">Official sponsor</span><span className="sc-free">Free for participants</span></span>
+        <span className="sc-name">WeFocusBuddy</span>
+        <span className="sc-what">Study and work with focus: book a one-to-one online coworking session with another student and get things done together.</span>
+        <span className="sc-perk">Sign up on WeFocusBuddy with your <b>university e-mail</b>: it&apos;s free for every challenge participant.</span>
+      </span>
+      <span className="sc-cta">Get free access <span aria-hidden="true">↗</span></span>
+    </a>
+  );
+}
+
 function useReveal() {
   useEffect(() => {
     const els = document.querySelectorAll(".reveal:not(.in)");
@@ -61,7 +76,7 @@ export default function Home() {
         <div className="hero-bar">
           <span className="brand"><span className="brand-mark" aria-hidden="true" />Investment Challenge <span className="yr">26/27</span></span>
           <a className="sponsor-pill" href={SPONSOR_URL} target="_blank" rel="noreferrer">
-            <span className="tag">Sponsor</span><span className="long">Powered by</span> <b>WeFocusBuddy</b> <span aria-hidden="true">↗</span>
+            <span className="tag">Sponsor</span><b>WeFocusBuddy</b><span className="long">· free with your university e-mail</span> <span aria-hidden="true">↗</span>
           </a>
         </div>
         <div className="hero-main">
@@ -72,6 +87,7 @@ export default function Home() {
             <div className="hero-facts">
               <span>{capital} per team</span><span>Long &amp; short</span><span>Daily close</span><span>6 months</span>
             </div>
+            <SponsorCard />
           </div>
           <AuthPanel />
         </div>
@@ -122,9 +138,10 @@ export default function Home() {
           <div>
             <div className="eyebrow">Official sponsor</div>
             <h2>WeFocusBuddy</h2>
-            <p>One-to-one online coworking sessions to study and work with focus. The partner of the 2026/27 edition.</p>
+            <p>One-to-one online coworking sessions to study and work with focus: you book a slot, meet another student on video, say what you will do and get it done together. The partner of the 2026/27 edition.</p>
+            <p className="sponsor-free"><span>Free</span> for every challenge participant who signs up with a university e-mail.</p>
           </div>
-          <a className="btn" href={SPONSOR_URL} target="_blank" rel="noreferrer">Visit wefocusbuddy.com ↗</a>
+          <a className="btn" href={SPONSOR_URL} target="_blank" rel="noreferrer">Get free access ↗</a>
         </div>
       </section>
 
