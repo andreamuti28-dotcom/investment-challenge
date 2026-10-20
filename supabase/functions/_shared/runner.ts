@@ -101,7 +101,10 @@ export async function runOnce(
     const settings = db.settings;
     const fetchStart = addDays(settings.start_date, -7);
 
-    if (!opts.skipFetch) {
+    // before the download window opens (one week before the start) there is nothing to fetch
+    const tooEarly = fetchStart > todayIn();
+    if (tooEarly && !opts.skipFetch) L(`before ${fetchStart}: no market data to download yet`);
+    if (!opts.skipFetch && !tooEarly) {
       // symbols in play: any non-cancelled order + benchmark
       const symbols = [...new Set<string>([...db.orders.map((o: any) => o.symbol), settings.benchmark_symbol])];
       const divisorOf = new Map(db.instruments.map((i: any) => [i.symbol, Number(i.price_divisor)]));
