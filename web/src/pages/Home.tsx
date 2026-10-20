@@ -61,7 +61,7 @@ export default function Home() {
             <h1>Trade the world.<br /><span className="dim">Beat the index.</span></h1>
             <Partners />
             <div className="hero-facts">
-              <span>{capital} per team</span><span>Long &amp; short</span><span>Daily close</span><span>6 months</span>
+              <span>{capital} per team</span><span>Long &amp; short</span><span>Daily close</span><span>{data?.months.length ?? 6} months</span>
             </div>
           </div>
           <AuthPanel />

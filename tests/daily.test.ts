@@ -72,3 +72,12 @@ test("an order dated after the valuation date stays pending", () => {
   const r = runEngine(input([o("f", "2026-12-04", "2026-12-03T20:00:00Z", "ENI.MI", "open", "long", 1)]), "2026-12-03");
   assert.equal(r.orderUpdates[0].status, "pending");
 });
+
+test("months are derived from the start and end dates", async () => {
+  const { generateMonths } = await import("../supabase/functions/_shared/core.ts");
+  assert.deepEqual(generateMonths("2026-12-01", "2027-05-31"), MONTHS);
+  const early = generateMonths("2026-10-20", "2027-05-31");
+  assert.equal(early.length, 8);
+  assert.deepEqual(early[0], { n: 1, startDate: "2026-10-20", endDate: "2026-10-30" }); // 31 Oct is a Saturday
+  assert.deepEqual(early.at(-1), { n: 8, startDate: "2027-05-01", endDate: "2027-05-31" });
+});

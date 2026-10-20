@@ -186,6 +186,26 @@ const isWeekday = (d: string) => {
   return w !== 0 && w !== 6;
 };
 
+/** Valuation months derived from the start and end dates: month 1 is the calendar month of
+ *  the start; each month is valued on its last weekday (the end date for the last month). */
+export function generateMonths(startDate: string, endDate: string): Month[] {
+  const out: Month[] = [];
+  let y = Number(startDate.slice(0, 4)), m = Number(startDate.slice(5, 7));
+  for (let n = 1; n <= 36; n++) {
+    const first = `${y}-${String(m).padStart(2, "0")}-01`;
+    if (first > endDate) break;
+    let last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    if (last >= endDate) last = endDate;
+    else while (!isWeekday(last)) last = addDays(last, -1);
+    const from = n === 1 ? startDate : first;
+    if (last < from) last = from; // start on the last weekend of a month
+    out.push({ n, startDate: from, endDate: last });
+    m++;
+    if (m === 13) { m = 1; y++; }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ series
 class Series {
   dates: string[] = [];

@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { callFunction, errText, supabase } from "../lib/supabase";
-import { must, useLoad, type Month, type Settings } from "../lib/data";
+import { must, useLoad, type Settings } from "../lib/data";
+import { calendarMonths } from "../lib/months";
 import { date, dateTime, download, num, pct, toCsv } from "../lib/format";
 import { Loading, Notice, Tabs } from "../components/ui";
 
@@ -262,13 +263,13 @@ function Orders() {
   const [month, setMonth] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const q = useLoad(async () => {
-    const [orders, transfers, teams, months] = await Promise.all([
+    const [orders, transfers, teams, settings] = await Promise.all([
       must(supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(5000)),
       must(supabase.from("transfer_orders").select("*").order("created_at", { ascending: false })),
       must(supabase.from("teams").select("id,name")),
-      must(supabase.from("challenge_months").select("n,label").order("n")),
+      must(supabase.from("challenge_settings").select("start_date,end_date").eq("id", 1).single()),
     ]);
-    return { orders: orders as any[], transfers: transfers as any[], teamName: Object.fromEntries((teams as any[]).map((t) => [t.id, t.name])), months: months as any[] };
+    return { orders: orders as any[], transfers: transfers as any[], teamName: Object.fromEntries((teams as any[]).map((t) => [t.id, t.name])), months: calendarMonths((settings as any).start_date, (settings as any).end_date) };
   });
   const [msg, setMsg] = useState("");
   const rows = useMemo(() => (q.data?.orders ?? []).filter((o) => (month === "all" || String(o.month_n) === month) && (status === "all" || o.status === status)), [q.data, month, status]);
@@ -421,7 +422,6 @@ function MarketData() {
 function SettingsTab() {
   const q = useLoad(async () => ({
     settings: (await must(supabase.from("challenge_settings").select("*").eq("id", 1).single())) as Settings,
-    months: (await must(supabase.from("challenge_months").select("*").order("n"))) as Month[],
   }));
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [s, setS] = useState<any>(null);
@@ -450,35 +450,24 @@ function SettingsTab() {
             benchmark_symbol: cur.benchmark_symbol, benchmark_currency: cur.benchmark_currency, start_date: cur.start_date, end_date: cur.end_date,
             regulation_url: cur.regulation_url, updated_at: new Date().toISOString(),
           }).eq("id", 1);
-          setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: "Settings saved. They apply from the next engine run." });
+          if (error) { setMsg({ kind: "err", text: errText(error) }); return; }
+          setMsg({ kind: "ok", text: "Settings saved. Recalculating everything with the new settings…" });
           setS(null); q.reload();
+          try {
+            const r = await callFunction("engine", {});
+            setMsg({ kind: r.status === "error" ? "err" : "ok", text: `Settings saved and results recalculated (${r.status}). ${(r.warnings ?? []).slice(0, 3).join(" · ")}` });
+          } catch (e) { setMsg({ kind: "err", text: `Settings saved, but the recalculation failed: ${errText(e)}. Run it from the Engine tab.` }); }
         }}>Save settings</button>
       </div>
       <div className="card">
         <h3>Calendar</h3>
-        <p className="muted small">Months are used for the month-end valuation and the monthly statistics (Sharpe, Sortino, drawdown). Orders are executed every trading day at the close.</p>
+        <p className="muted small">Calculated from the start and end dates above: month 1 starts on the start date, every month is valued on its last weekday. Results before the start date are not calculated; orders placed earlier are executed at the close of the start date. Changing the start date recalculates the whole challenge from that day.</p>
         <div className="table-wrap"><table>
-          <thead><tr><th>#</th><th>Label</th><th>Start</th><th>End (valuation)</th><th /></tr></thead>
-          <tbody>{q.data.months.map((m) => <MonthRow key={m.n} m={m} onSaved={(t) => { setMsg(t); q.reload(); }} />)}</tbody>
+          <thead><tr><th>#</th><th>Month</th><th>From</th><th>Valuation date</th></tr></thead>
+          <tbody>{calendarMonths(cur.start_date, cur.end_date).map((m) => <tr key={m.n}><td>{m.n}</td><td>{m.label}</td><td>{date(m.start_date)}</td><td>{date(m.end_date)}</td></tr>)}</tbody>
         </table></div>
       </div>
     </>
-  );
-}
-
-function MonthRow({ m, onSaved }: { m: Month; onSaved: (x: { kind: "ok" | "err"; text: string }) => void }) {
-  const [v, setV] = useState({ start_date: m.start_date, end_date: m.end_date });
-  const dirty = v.start_date !== m.start_date || v.end_date !== m.end_date;
-  return (
-    <tr>
-      <td>{m.n}</td><td>{m.label}</td>
-      <td><input aria-label="start" type="date" value={v.start_date} onChange={(e) => setV({ ...v, start_date: e.target.value })} /></td>
-      <td><input aria-label="end" type="date" value={v.end_date} onChange={(e) => setV({ ...v, end_date: e.target.value })} /></td>
-      <td><button className="small" disabled={!dirty} onClick={async () => {
-        const { error } = await supabase.from("challenge_months").update({ start_date: v.start_date, end_date: v.end_date }).eq("n", m.n);
-        onSaved(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: `${m.label} saved.` });
-      }}>Save</button></td>
-    </tr>
   );
 }
 

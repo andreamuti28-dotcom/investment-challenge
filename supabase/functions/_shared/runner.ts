@@ -1,7 +1,7 @@
 // Orchestrates one engine run: read inputs, refresh market data, replay, write results,
 // notify. Talks to Supabase through PostgREST RPCs with plain fetch, so the same file
 // runs inside the Edge Function (Deno) and in the GitHub Actions fallback (Node).
-import { type EngineInput, type EngineOutput, addDays, runEngine } from "./core.ts";
+import { type EngineInput, type EngineOutput, addDays, generateMonths, runEngine } from "./core.ts";
 import { fetchChart, fetchEcb } from "./marketdata.ts";
 
 export interface RunnerEnv {
@@ -38,7 +38,8 @@ export function toEngineInput(db: any): EngineInput {
       startDate: s.start_date,
       endDate: s.end_date,
     },
-    months: db.months.map((m: any) => ({ n: m.n, startDate: m.start_date, endDate: m.end_date })),
+    // the calendar follows the start and end dates set in the admin panel
+    months: generateMonths(s.start_date, s.end_date),
     teams: db.teams.map((t: any) => ({ id: t.id, name: t.name, competition: t.competition, violations: t.violations ?? 0 })),
     instruments: db.instruments.map((i: any) => ({ symbol: i.symbol, currency: i.currency })),
     orders: db.orders.map((o: any) => ({

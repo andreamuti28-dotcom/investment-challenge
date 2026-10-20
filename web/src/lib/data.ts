@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./supabase";
+import { calendarMonths, type CalMonth } from "./months";
 
 export interface Settings {
   capital: number;
@@ -50,10 +51,7 @@ export async function must<T>(p: PromiseLike<{ data: T | null; error: any }>): P
   return data as T;
 }
 
-export async function loadCalendar(): Promise<{ settings: Settings; months: Month[] }> {
-  const [settings, months] = await Promise.all([
-    must(supabase.from("challenge_settings").select("*").eq("id", 1).single()),
-    must(supabase.from("challenge_months").select("*").order("n")),
-  ]);
-  return { settings: settings as unknown as Settings, months: months as unknown as Month[] };
+export async function loadCalendar(): Promise<{ settings: Settings; months: CalMonth[] }> {
+  const settings = (await must(supabase.from("challenge_settings").select("*").eq("id", 1).single())) as unknown as Settings;
+  return { settings, months: calendarMonths(settings.start_date, settings.end_date) };
 }
