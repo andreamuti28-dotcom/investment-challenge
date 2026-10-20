@@ -631,3 +631,12 @@ input.name-edit { min-height: 32px; padding: 4px 8px; font-weight: 600; backgrou
 input.name-edit:hover, input.name-edit:focus { border-color: var(--line-2); background: var(--bg-2); }
 .team-switch button { flex: 0 0 auto; white-space: nowrap; }
 .team-switch .ts-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+/* per-member stock quota in the order ticket */
+.stock-quota { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin: 4px 0 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); font-size: 13px; }
+.stock-quota .dots { display: inline-flex; gap: 4px; }
+.stock-quota .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-2); }
+.stock-quota .dots i.on { background: var(--accent); }
+.stock-quota.full { border-color: rgba(245, 196, 81, 0.5); }
+.stock-quota.full .dots i.on { background: var(--warn); }
+#sl { min-width: 190px; }

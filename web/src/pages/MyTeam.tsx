@@ -197,6 +197,12 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const [qty, setQty] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "err" | "warn"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // how many different stocks this member holds, against the team's per-member limit
+  const usage = useLoad(async () => {
+    if (d.adminView) return null;
+    const { data } = await supabase.rpc("my_stock_usage", { p_team: d.teamId });
+    return data as { used: number; limit: number } | null;
+  }, [d.teamId, d.orders.length]);
 
   // holdings now, plus the effect of pending orders in the order they were placed
   const held = useMemo(() => {
@@ -260,6 +266,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
       text: `Order saved: ${describe(action, side, qty, sel.symbol, held.get(sel.symbol)?.side)}. It will be executed at the closing price of ${date(o.exec_date)}. You can cancel it until ${dateTime(o.cutoff_at)}.`,
     });
     setSel(null); setQty(""); setQuery(""); setTiming(null);
+    usage.reload();
     await reload();
   }
   async function cancel(fn: "cancel_order", id: string) {
@@ -286,6 +293,14 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
       <div className="grid cols-2">
         <div className="card">
           <h3>New order</h3>
+          {usage.data && (
+            <div className={`stock-quota ${usage.data.used >= usage.data.limit ? "full" : ""}`}>
+              <span>Your stocks</span>
+              <span className="dots" aria-hidden="true">{Array.from({ length: usage.data.limit }, (_, i) => <i key={i} className={i < usage.data!.used ? "on" : ""} />)}</span>
+              <b>{usage.data.used} / {usage.data.limit}</b>
+              <span className="muted small">{usage.data.used >= usage.data.limit ? "limit reached: close one to open a new stock" : "different stocks you can hold"}</span>
+            </div>
+          )}
           <form className="row" onSubmit={(e) => { e.preventDefault(); search(); }}>
             <div className="field"><label htmlFor="q">Search a listed stock (name or ticker)</label><input id="q" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. Eni, ASML, 7203.T" /></div>
             <button type="submit" disabled={busy} style={{ alignSelf: "flex-end" }}>Search</button>
@@ -474,8 +489,41 @@ function TeamTab({ teamId, admin }: { teamId: string; admin: boolean }) {
         </table></div>
         <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. To remove a member, contact the organiser.</p>
       </div>
+      <StockLimit teamId={teamId} canEdit={admin || (t.role === "president")} competition={teams.find((x) => x.id === teamId)?.competition ?? null} />
       {!admin && !teams.some((x) => x.competition === "A") && (
         <div className="card"><h3>Your association's team</h3><p className="muted small">You are not in a Competition A team yet: enter the code your president gave you.</p><JoinTeam inline /></div>
+      )}
+    </div>
+  );
+}
+
+/** Max different stocks per member: the president of an association team chooses 1–10 ("no limit" = 10); always 10 in Competition B. */
+function StockLimit({ teamId, canEdit, competition }: { teamId: string; canEdit: boolean; competition: "A" | "B" | null }) {
+  const q = useLoad(async () => must(supabase.from("teams").select("competition,member_stock_limit").eq("id", teamId).single()) as Promise<any>, [teamId]);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  if (!q.data) return null;
+  const comp = q.data.competition ?? competition;
+  const cur: number | null = q.data.member_stock_limit;
+  const eff = comp === "B" ? 10 : Math.min(cur ?? 10, 10);
+  return (
+    <div className="card">
+      <h3>Stocks per member</h3>
+      <p className="muted small">Each member can hold at most <b>{eff}</b> different stocks at a time (positions they opened plus their pending orders). {comp === "B" ? "In Competition B the limit is always 10." : "The president chooses the limit, up to 10."}</p>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      {comp === "A" && canEdit && (
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <div className="field narrow"><label htmlFor="sl">Limit per member</label>
+            <select id="sl" value={cur ?? ""} onChange={async (e) => {
+              const v = e.target.value === "" ? null : Number(e.target.value);
+              const { error } = await supabase.rpc("set_stock_limit", { p_team: teamId, p_limit: v });
+              setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: `Saved: ${v ?? "no limit (10)"} per member. Positions already open are not affected.` });
+              q.reload();
+            }}>
+              <option value="">No limit (max 10)</option>
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+        </div>
       )}
     </div>
   );

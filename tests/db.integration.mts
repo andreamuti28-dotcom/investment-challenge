@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -280,4 +280,22 @@ const OUT = (outsider.rows[0] as any).user_id;
 ok("other teams cannot read the chat", (await as("authenticated", OUT, `select * from team_messages where team_id = '${A1}'`)).rows.length === 0);
 await expectErr("other teams cannot write in the chat", () => as("authenticated", OUT, `insert into team_messages (team_id, body) values ('${A1}', 'x')`), /row-level security/);
 ok("organiser reads every chat", (await as("authenticated", ADMIN, "select * from team_messages")).rows.length === 1);
+// per-member stock limit
+const U7 = "00000000-0000-0000-0000-000000000007";
+await db.exec(`insert into auth.users values ('${U7}','seven@uni.it','{"full_name":"Seven"}')`);
+await as("authenticated", ADMIN, `select set_membership_admin('${U7}', '${A2}', 'member')`);
+ok("default limit is 10", (await db.query(`select stock_limit_of('${A2}') l`)).rows[0] && ((await db.query(`select stock_limit_of('${A2}') l`)).rows[0] as any).l === 10);
+await expectErr("members cannot set the limit", () => as("authenticated", U7, `select set_stock_limit('${A2}', 2)`), /Only the president/);
+await as("authenticated", ADMIN, `select set_membership_admin('${U7}', '${A2}', 'president')`);
+await as("authenticated", U7, `select set_stock_limit('${A2}', 2)`);
+await as("authenticated", U7, `select place_order_in('${A2}','AAPL','open','long',1)`);
+await as("authenticated", U7, `select place_order_in('${A2}','ENI.MI','open','long',1)`);
+await expectErr("third stock over the limit of 2", () => as("authenticated", U7, `select place_order_in('${A2}','XYZ.MI','open','short',1)`), /limit is 2 per member/);
+const use = await as("authenticated", U7, `select my_stock_usage('${A2}') j`);
+ok("usage reported", (use.rows[0] as any).j.used === 2 && (use.rows[0] as any).j.limit === 2, JSON.stringify(use.rows[0]));
+await as("authenticated", U7, `select set_stock_limit('${A2}', null)`);
+await as("authenticated", U7, `select place_order_in('${A2}','XYZ.MI','open','short',1)`);
+ok("no limit means 10", ((await db.query(`select stock_limit_of('${A2}') l`)).rows[0] as any).l === 10);
+await expectErr("limit above 10 refused", () => as("authenticated", U7, `select set_stock_limit('${A2}', 50)`), /between 1 and 10/);
+ok("Competition B is always 10", ((await db.query(`select stock_limit_of('${B1}') l`)).rows[0] as any).l === 10);
 console.log(fails ? `\n${fails} FAILED` : "\nALL DB TESTS PASSED");
