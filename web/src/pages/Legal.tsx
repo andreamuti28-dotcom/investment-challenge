@@ -36,7 +36,9 @@ export function Privacy() {
       <p>
         Within a team, every member sees the names of the other members; the president also sees their e-mail addresses. The organiser sees
         all accounts. The team name, association and results are published in the leaderboard, together with each team's positions and their
-        performance; pending orders are visible only to the team itself. If you accept the cookie notice, an anonymous random identifier is
+        performance. The public list of participants shows first and last name, association, role, Competition B team and, if you add it,
+        your LinkedIn link; your executed orders and the stocks you opened are visible to everyone, while pending orders are visible only to
+        you and your team-mates. Team chats are visible only to the members of the team and to the organiser. If you accept the cookie notice, an anonymous random identifier is
         stored in your browser and used only to count visits in aggregate form. Full IP addresses, cross-site browsing data, profiling data
         and advertising data are not collected by the site.
       </p>

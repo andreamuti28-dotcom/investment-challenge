@@ -11,7 +11,8 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   const { session, isAdmin, team } = useAuth();
   const nav = useNavigate();
   const [mode, setMode] = useState<Mode>(initial);
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -62,7 +63,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
     if (password.length < 8) return setErr("The password must have at least 8 characters.");
     setBusy(true); setErr("");
     try {
-      await callFunction("register", { name, email: email.trim(), password, code: code.trim() || undefined });
+      await callFunction("register", { firstName, lastName, email: email.trim(), password, code: code.trim() || undefined });
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
       nav("/team");
@@ -113,7 +114,10 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
         )
       ) : (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); register(); }}>
-          <div><label htmlFor="rg-nm">Full name</label><input id="rg-nm" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div className="name-pair">
+            <div><label htmlFor="rg-fn">First name</label><input id="rg-fn" autoComplete="given-name" required maxLength={40} value={firstName} onChange={(e) => setFirstName(e.target.value)} /></div>
+            <div><label htmlFor="rg-ln">Last name</label><input id="rg-ln" autoComplete="family-name" required maxLength={40} value={lastName} onChange={(e) => setLastName(e.target.value)} /></div>
+          </div>
           <div><label htmlFor="rg-em">E-mail</label><input id="rg-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /><p className="small muted" style={{ margin: "6px 0 0" }}>Tip: with a university e-mail, WeFocusBuddy, our sponsor, is free.</p></div>
           <div><label htmlFor="rg-pw">Password (at least 8 characters)</label><input id="rg-pw" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
           <div>

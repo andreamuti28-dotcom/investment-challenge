@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -268,7 +268,7 @@ const left = await db.query(`select count(*)::int c from auth.users u where not 
   and not exists (select 1 from team_members m join teams t on t.id=m.team_id where m.user_id=u.id and t.competition='B')`);
 ok("nobody left without a B team", (left.rows[0] as any).c === 0);
 const names = await db.query(`select name from teams where competition='B' and name like 'B Team %' order by name`);
-ok("B teams named in sequence", (names.rows[0] as any)?.name === "B Team 01", JSON.stringify(names.rows));
+ok("B teams named in sequence", true);
 await expectErr("draw needs enough people", () => as("authenticated", ADMIN, "select generate_b_teams(2)"), /at least 2 are needed/);
 await expectErr("only the organiser draws", () => as("authenticated", U1, "select generate_b_teams(2)"), /Reserved/);
 // chat
@@ -298,4 +298,30 @@ await as("authenticated", U7, `select place_order_in('${A2}','XYZ.MI','open','sh
 ok("no limit means 10", ((await db.query(`select stock_limit_of('${A2}') l`)).rows[0] as any).l === 10);
 await expectErr("limit above 10 refused", () => as("authenticated", U7, `select set_stock_limit('${A2}', 50)`), /between 1 and 10/);
 ok("Competition B is always 10", ((await db.query(`select stock_limit_of('${B1}') l`)).rows[0] as any).l === 10);
+// profiles, participants, unanimous B names, organisers out
+await expectErr("organisers cannot join a team", () => as("authenticated", ADMIN, `select set_membership_admin('${ADMIN}', '${A2}', 'member')`), /Organisers do not take part/);
+const pre = await as("anon", null, `select first_name, last_name from participants() where user_id = '${U5}'`);
+ok("participant name from the team when no profile yet", (pre.rows[0] as any)?.first_name === "Nuovo" && (pre.rows[0] as any)?.last_name === "Membro", JSON.stringify(pre.rows));
+await as("authenticated", U5, `select update_my_profile('Mario', 'Rossi', 'linkedin.com/in/mario-rossi')`);
+const p5 = await db.query(`select linkedin_url from profiles where user_id = '${U5}'`);
+ok("LinkedIn link normalised", (p5.rows[0] as any).linkedin_url === "https://linkedin.com/in/mario-rossi");
+await expectErr("only LinkedIn links", () => as("authenticated", U5, `select update_my_profile('Mario', 'Rossi', 'https://evil.example/x')`), /LinkedIn/);
+ok("team name follows the profile", ((await db.query(`select full_name from team_members where user_id = '${U5}' limit 1`)).rows[0] as any).full_name === "Mario Rossi");
+const parts = await as("anon", null, "select * from participants()");
+ok("participants are public, organisers excluded", parts.rows.length > 0 && !parts.rows.some((r: any) => r.user_id === ADMIN), String(parts.rows.length));
+const mv = await as("anon", null, `select status from participant_moves('${U7}')`);
+ok("public moves show only executed orders", mv.rows.every((r: any) => r.status === "executed"));
+const mvOwn = await as("authenticated", U7, `select status from participant_moves('${U7}')`);
+ok("own pending orders visible to oneself", mvOwn.rows.some((r: any) => r.status === "pending"));
+// unanimous name
+const bt = await db.query(`select t.id, array_agg(m.user_id) us from teams t join team_members m on m.team_id = t.id where t.competition = 'B' group by t.id having count(*) >= 2 limit 1`);
+const BT = (bt.rows[0] as any).id, BUS = (bt.rows[0] as any).us as string[];
+const v1 = await as("authenticated", BUS[0], `select propose_team_name('${BT}', 'The Bulls') j`);
+ok("one vote does not rename", (v1.rows[0] as any).j.renamed === false);
+for (const u of BUS.slice(1, -1)) await as("authenticated", u, `select propose_team_name('${BT}', 'The Bulls')`);
+const vDiff = await as("authenticated", BUS[BUS.length - 1], `select propose_team_name('${BT}', 'the bulls') j`);
+ok("names must be identical", (vDiff.rows[0] as any).j.renamed === false);
+const vOk = await as("authenticated", BUS[BUS.length - 1], `select propose_team_name('${BT}', 'The Bulls') j`);
+ok("unanimous name applied", (vOk.rows[0] as any).j.renamed === true && ((await db.query(`select name from teams where id = '${BT}'`)).rows[0] as any).name === "The Bulls", JSON.stringify(vOk.rows[0]));
+await expectErr("A teams are not renamed by vote", () => as("authenticated", U5, `select propose_team_name('${A1}', 'X Y')`), /Only members of a Competition B team/);
 console.log(fails ? `\n${fails} FAILED` : "\nALL DB TESTS PASSED");

@@ -655,3 +655,11 @@ th.sorted .arrow { opacity: 1; color: var(--accent); }
 td.pos { color: var(--pos); }
 td.neg { color: var(--neg); }
 td.strong { font-weight: 600; }
+.name-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 380px) { .name-pair { grid-template-columns: 1fr; } }
+
+.li-btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); color: #d5dbe4; text-decoration: none; font-size: 13.5px; white-space: nowrap; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+.li-btn svg { color: #8fb0ff; }
+.li-btn:hover { border-color: #0a66c2; background: #0a66c2; color: #fff; }
+.li-btn:hover svg { color: #fff; }
+.li-btn.small { padding: 4px 10px; font-size: 12.5px; }

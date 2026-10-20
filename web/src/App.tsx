@@ -8,6 +8,8 @@ import Leaderboard from "./pages/Leaderboard";
 import MyTeam from "./pages/MyTeam";
 import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
+import Profile from "./pages/Profile";
+import Participants, { Participant } from "./pages/Participants";
 import { Cookies, Privacy } from "./pages/Legal";
 import CookieBanner from "./components/CookieBanner";
 import AuthPanel from "./components/AuthPanel";
@@ -75,7 +77,9 @@ export default function App() {
             <nav className="nav" aria-label="Main">
               <NavLink to="/" end>Home</NavLink>
               <NavLink to="/leaderboard">Leaderboard</NavLink>
+              <NavLink to="/participants">Participants</NavLink>
               {(team || (session && !isAdmin)) && <NavLink to="/team">My team</NavLink>}
+              {session && !isAdmin && team && <NavLink to="/me">Profile</NavLink>}
               {isAdmin && <NavLink to="/admin">Admin</NavLink>}
             </nav>
             <div className="nav-right">
@@ -96,6 +100,9 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/participants" element={<Participants />} />
+          <Route path="/participants/:id" element={<Participant />} />
+          <Route path="/me" element={<Guard need="team"><Profile /></Guard>} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/team" element={<Guard need="team"><MyTeam /></Guard>} />

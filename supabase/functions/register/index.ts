@@ -1,5 +1,5 @@
 // Public registration: everyone creates their own account as a member.
-// Body: { name, email, password, code? }
+// Body: { firstName, lastName, email, password, code? }
 // With a valid team code the account joins that team at once; without it, the member joins
 // later from their account. The organiser marks the presidents in Admin > Accounts.
 // Accounts are confirmed at once.
@@ -17,11 +17,13 @@ Deno.serve(async (req) => {
     return t ? JSON.parse(t) : null;
   };
   const b = await req.json().catch(() => ({}));
-  const name = String(b.name ?? "").trim().replace(/\s+/g, " ");
+  const clean = (x: unknown) => String(x ?? "").trim().replace(/\s+/g, " ");
+  const firstName = clean(b.firstName), lastName = clean(b.lastName);
+  const name = `${firstName} ${lastName}`.trim();
   const email = String(b.email ?? "").trim().toLowerCase();
   const password = String(b.password ?? "");
   const code = String(b.code ?? "").trim();
-  if (name.length < 2 || name.length > 80) return json({ error: "Enter your full name" }, 400);
+  if (!firstName || !lastName || firstName.length > 40 || lastName.length > 40) return json({ error: "Enter your first and last name" }, 400);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 200) return json({ error: "Enter a valid e-mail address" }, 400);
   if (password.length < 8 || password.length > 72) return json({ error: "The password must have at least 8 characters" }, 400);
 
@@ -35,7 +37,7 @@ Deno.serve(async (req) => {
     const r = await fetch(`${e.supabaseUrl}/auth/v1/admin/users`, {
       method: "POST",
       headers: H,
-      body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name } }),
+      body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, first_name: firstName, last_name: lastName } }),
     });
     const u = await r.json();
     if (!r.ok) {
@@ -44,6 +46,7 @@ Deno.serve(async (req) => {
       if (/password/i.test(msg)) return json({ error: msg }, 400);
       return json({ error: "Registration failed, please try again" }, 500);
     }
+    await rpc("create_profile", { p_user: u.id, p_first: firstName, p_last: lastName }).catch((err) => console.error(err));
     if (team) {
       try {
         await rpc("join_team", { p_user: u.id, p_team: team.team_id, p_role: "member", p_name: name });

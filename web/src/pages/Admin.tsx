@@ -97,7 +97,6 @@ function Teams() {
           <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim()} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
         </div>
       </div>
-      <DrawB reload={q.reload} setMsg={setMsg} />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Team</th><th>Comp.</th><th>President</th><th className="num">Members</th><th>Team code</th><th className="num">Violations</th><th /></tr></thead>
@@ -203,7 +202,7 @@ function DrawB({ reload, setMsg }: { reload: () => void; setMsg: (m: { kind: "ok
   return (
     <div className="card draw-b">
       <h3>Competition B · random teams</h3>
-      <p className="muted small">Every registered person can also play in Competition B. The draw puts everybody who is not in a B team yet into new teams of the size you choose (some get one person more when numbers do not divide exactly), spreading members of the same association over different teams. B teams have no president; each has its own chat. People who register later can be drawn again, or added by hand in Accounts.</p>
+      <p className="muted small">Every registered person also plays in Competition B (you, as organiser, stay out of both competitions). The draw puts everybody who is not in a B team yet into new teams named Team 1, Team 2… of the size you choose (some get one person more when numbers do not divide exactly), spreading members of the same association over different teams. B teams have no president; each has its own chat, and its members can rename it together from their Profile (the name changes when they all propose the same one). People who register later can be drawn again, or added by hand in Accounts.</p>
       {users.error ? <Notice kind="err">{users.error}</Notice> : !users.data ? <Loading /> : (
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="stat"><div className="label">Waiting for a B team</div><div className="value">{pool.length}</div></div>
@@ -236,6 +235,7 @@ function Accounts() {
     <>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <PasswordRequests users={q.data} onMessage={setMsg} />
+      <DrawB reload={() => { q.reload(); teams.reload(); }} setMsg={setMsg} />
       <h3 style={{ marginTop: 8 }}>All accounts</h3>
       <p className="muted small">Everyone registers with their own account as a member. Each person can be in one Competition A team (their association) and one Competition B team (drawn in the Teams tab). Here you move people between teams and choose the president of each association team (one per team): the president sees the team code and shares it; members can also join by themselves with the code. Deleting a member or president removes only that person: the team and its results stay. A deleted person can register again with the same e-mail. To remove a whole team, use "Delete team" in the Teams tab.</p>
       <div className="table-wrap"><table>

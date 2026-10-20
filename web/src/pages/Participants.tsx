@@ -1,0 +1,90 @@
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+import { useLoad } from "../lib/data";
+import { Loading, Notice, Tabs } from "../components/ui";
+import PersonActivity from "../components/PersonActivity";
+
+interface P { user_id: string; first_name: string; last_name: string; linkedin_url: string | null; team_a: string | null; association: string | null; role: string | null; team_b: string | null }
+
+const loadAll = async () => {
+  const { data, error } = await supabase.rpc("participants");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as P[];
+};
+
+function LinkedIn({ url, small = false }: { url: string | null; small?: boolean }) {
+  if (!url) return <span className="muted small">–</span>;
+  return (
+    <a className={`li-btn ${small ? "small" : ""}`} href={url} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.95v5.66H9.34V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z" /></svg>
+      LinkedIn
+    </a>
+  );
+}
+
+/** Public list of every participant, with association, role, Competition B team and LinkedIn. */
+export default function Participants() {
+  const q = useLoad(loadAll);
+  const nav = useNavigate();
+  const [find, setFind] = useState("");
+  const [view, setView] = useState<"all" | "A" | "B">("all");
+  const rows = useMemo(() => {
+    const f = find.trim().toLowerCase();
+    return (q.data ?? []).filter((p) => (view === "all" || (view === "A" ? p.team_a : p.team_b))
+      && (!f || [p.first_name, p.last_name, p.team_a, p.association, p.team_b].some((x) => (x ?? "").toLowerCase().includes(f))));
+  }, [q.data, find, view]);
+  if (q.error) return <Notice kind="err">{q.error}</Notice>;
+  if (!q.data) return <Loading />;
+  return (
+    <>
+      <div className="row spread page-head">
+        <div><div className="eyebrow">Participants</div><h1>Who is playing.</h1></div>
+        <p className="muted small">{q.data.length} participants · click a name to see their stocks and moves</p>
+      </div>
+      <div className="row" style={{ gap: 12, marginBottom: 12, alignItems: "center" }}>
+        <input aria-label="Search participants" placeholder="Search a name, team or association…" value={find} onChange={(e) => setFind(e.target.value)} style={{ maxWidth: 360 }} />
+        <Tabs value={view} onChange={setView} items={[["all", "Everyone"], ["A", "Competition A"], ["B", "Competition B"]]} />
+      </div>
+      {rows.length === 0 ? <p className="muted">No participants found.</p> : (
+        <div className="table-wrap"><table>
+          <thead><tr><th>First name</th><th>Last name</th><th>Association (team A)</th><th>Role</th><th>Team B</th><th>LinkedIn</th></tr></thead>
+          <tbody>{rows.map((p) => (
+            <tr key={p.user_id} className="clickable" onClick={() => nav(`/participants/${p.user_id}`)}>
+              <td><b>{p.first_name}</b></td><td><b>{p.last_name}</b></td>
+              <td>{p.team_a ?? <span className="muted small">–</span>}{p.association && p.association !== p.team_a && <div className="muted small">{p.association}</div>}</td>
+              <td>{p.role ? <span className={`badge ${p.role === "president" ? "president" : ""}`}>{p.role}</span> : <span className="muted small">–</span>}</td>
+              <td>{p.team_b ?? <span className="muted small">not drawn yet</span>}</td>
+              <td><LinkedIn url={p.linkedin_url} small /></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </>
+  );
+}
+
+/** One participant: details, stocks and executed moves (public). */
+export function Participant() {
+  const { id } = useParams();
+  const q = useLoad(loadAll);
+  if (q.error) return <Notice kind="err">{q.error}</Notice>;
+  if (!q.data) return <Loading />;
+  const p = q.data.find((x) => x.user_id === id);
+  if (!p) return <Notice kind="err">Participant not found. <Link to="/participants">Back to the list</Link></Notice>;
+  return (
+    <>
+      <div className="row spread page-head">
+        <div>
+          <div className="eyebrow"><Link to="/participants">Participants</Link> · {p.role ?? "participant"}</div>
+          <h1>{p.first_name} {p.last_name}</h1>
+          <p className="muted small" style={{ marginTop: 8 }}>
+            Competition A: <b>{p.team_a ?? "–"}</b>{p.association && p.association !== p.team_a ? ` (${p.association})` : ""} · Competition B: <b>{p.team_b ?? "not drawn yet"}</b>
+          </p>
+        </div>
+        <LinkedIn url={p.linkedin_url} />
+      </div>
+      <PersonActivity key={id} userId={id!} />
+    </>
+  );
+}
