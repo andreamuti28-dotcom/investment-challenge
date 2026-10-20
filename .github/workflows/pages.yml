@@ -1,0 +1,36 @@
+# Builds the website and publishes it on GitHub Pages at every push to main.
+# One-time setup: repository Settings > Pages > Source: "GitHub Actions".
+# With a custom domain, set the repository variable SITE_BASE to "/" (Settings > Variables).
+name: Website (GitHub Pages)
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: true }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+        working-directory: web
+      - run: npm run build && cp dist/index.html dist/404.html
+        working-directory: web
+        env:
+          VITE_BASE: ${{ vars.SITE_BASE || format('/{0}/', github.event.repository.name) }}
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: web/dist }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

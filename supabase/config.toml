@@ -1,0 +1,12 @@
+# Minimal Supabase CLI config. The functions check authentication themselves
+# (admin JWT or the ENGINE_SECRET header), so gateway JWT verification is off.
+project_id = "investment-challenge"
+
+[functions.engine]
+verify_jwt = false
+
+[functions.market-data]
+verify_jwt = false
+
+[functions.admin]
+verify_jwt = false

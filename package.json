@@ -1,0 +1,13 @@
+{
+  "name": "investment-challenge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:db": "node --experimental-strip-types tests/db.integration.mts && node --experimental-strip-types tests/runner.integration.mts",
+    "engine": "node --experimental-strip-types scripts/run-engine.ts"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.2.17"
+  }
+}

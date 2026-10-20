@@ -1,0 +1,25 @@
+# PLAN B, disabled by default: runs the engine from GitHub instead of Supabase, for the
+# case where Yahoo Finance refuses requests coming from Supabase servers.
+# To enable: add the secrets SUPABASE_URL and SUPABASE_SERVICE_KEY (plus optional
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID), then uncomment the schedule block.
+name: Engine (GitHub fallback)
+on:
+  workflow_dispatch:
+    inputs:
+      as_of: { description: "Valuation date YYYY-MM-DD (empty = today)", required: false }
+  # schedule:
+  #   - cron: "45 22 * * *"
+  #   - cron: "45 5 * * *"
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node --experimental-strip-types scripts/run-engine.ts ${{ github.event.inputs.as_of }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
