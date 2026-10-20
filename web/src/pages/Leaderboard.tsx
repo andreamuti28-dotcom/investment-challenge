@@ -15,9 +15,30 @@ interface Row {
   violations: number | null; months_completed: number | null; as_of: string | null;
 }
 
+type SortKey = "nav" | "total_return" | "excess_return" | "volatility" | "sharpe" | "sortino" | "beta" | "max_drawdown" | "calmar" | "operations" | "max_weight" | "hhi" | "violations";
+const COLS: [SortKey, string, string][] = [
+  ["nav", "NAV", "Portfolio value in euro"],
+  ["total_return", "Total return", "Official ranking metric (Art. 12)"],
+  ["excess_return", "vs MSCI World", "Total return minus the MSCI World return"],
+  ["volatility", "Volatility", "Annualised, from monthly returns"],
+  ["sharpe", "Sharpe", "Excess return per unit of risk"],
+  ["sortino", "Sortino", "Excess return per unit of downside risk"],
+  ["beta", "Beta", "Sensitivity to the MSCI World"],
+  ["max_drawdown", "Max drawdown", "Worst fall from a peak (closer to 0 is better)"],
+  ["calmar", "Calmar", "Annualised return / max drawdown"],
+  ["operations", "Operations", "Orders executed"],
+  ["max_weight", "Max weight", "Largest position as % of the portfolio"],
+  ["hhi", "HHI", "Concentration (Herfindahl index)"],
+  ["violations", "Violations", "Rule violations recorded by the organiser"],
+];
+
 export default function Leaderboard() {
   const [comp, setComp] = useState<"A" | "B">("A");
   const [open, setOpen] = useState<string | null>(null);
+  // ranking metric: highest first by default; click again to reverse
+  const [sortKey, setSortKey] = useState<SortKey>("total_return");
+  const [desc, setDesc] = useState(true);
+  const sortBy = (k: SortKey) => { if (k === sortKey) setDesc(!desc); else { setSortKey(k); setDesc(true); } };
   const { data, error } = useLoad(async () => {
     const [rows, run, nav, bench] = await Promise.all([
       must(supabase.from("leaderboard").select("*")),
@@ -30,8 +51,15 @@ export default function Leaderboard() {
 
   const rows = useMemo(() => {
     const r = (data?.rows ?? []).filter((x) => x.competition === comp);
-    return r.sort((a, b) => (a.rank_in_competition ?? 999) - (b.rank_in_competition ?? 999) || a.name.localeCompare(b.name));
-  }, [data, comp]);
+    const val = (x: Row) => { const v = x[sortKey]; return v === null || v === undefined ? null : Number(v); };
+    return r.sort((a, b) => {
+      const va = val(a), vb = val(b);
+      if (va === null && vb === null) return a.name.localeCompare(b.name);
+      if (va === null) return 1; // teams without a value always at the bottom
+      if (vb === null) return -1;
+      return (desc ? vb - va : va - vb) || a.name.localeCompare(b.name);
+    });
+  }, [data, comp, sortKey, desc]);
 
   const series: Series[] = useMemo(() => {
     if (!data) return [];
@@ -65,31 +93,39 @@ export default function Leaderboard() {
         <p className="muted">No teams registered in this competition yet.</p>
       ) : (
         <>
+          <div className="rank-by">
+            <label htmlFor="rankby">Rank by</label>
+            <select id="rankby" value={sortKey} onChange={(e) => { setSortKey(e.target.value as SortKey); setDesc(true); }}>
+              {COLS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            </select>
+            <button type="button" className="secondary small" onClick={() => setDesc(!desc)} aria-label="Reverse order">{desc ? "Highest first ↓" : "Lowest first ↑"}</button>
+          </div>
           <div className="table-wrap">
             <table className="sticky-2">
               <thead>
                 <tr>
-                  <th className="num">#</th><th>Team</th><th className="num">NAV</th><th className="num">Total return</th>
-                  <th className="num">vs MSCI World</th><th className="num" title="Annualised, monthly returns">Volatility</th>
-                  <th className="num">Sharpe</th><th className="num">Sortino</th><th className="num">Beta</th>
-                  <th className="num">Tracking error</th><th className="num">Max drawdown</th><th className="num">Calmar</th>
-                  <th className="num">Operations</th><th className="num">Max weight</th><th className="num">HHI</th><th className="num">Violations</th><th />
+                  <th className="num">#</th><th>Team</th>
+                  {COLS.map(([k, label, title]) => (
+                    <th key={k} className={`num sortable ${sortKey === k ? "sorted" : ""}`} title={title} aria-sort={sortKey === k ? (desc ? "descending" : "ascending") : "none"}>
+                      <button type="button" onClick={() => sortBy(k)}>{label}<span className="arrow" aria-hidden="true">{sortKey === k ? (desc ? "↓" : "↑") : "↕"}</span></button>
+                    </th>
+                  ))}
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {rows.map((r, i) => (
                   <Fragment key={r.team_id}>
-                  <tr className={`clickable ${r.rank_in_competition === 1 ? "first" : ""}`} onClick={() => setOpen(open === r.team_id ? null : r.team_id)}>
-                    <td className="num">{r.rank_in_competition ?? "–"}</td>
+                  <tr className={`clickable ${i === 0 && r[sortKey] !== null ? "first" : ""}`} onClick={() => setOpen(open === r.team_id ? null : r.team_id)}>
+                    <td className="num">{i + 1}</td>
                     <td style={{ minWidth: 190 }}><div><b>{r.name}</b></div><div className="muted small">{r.university}</div></td>
                     <td className="num">{eur(r.nav, 0)}</td>
-                    <td className={`num ${signClass(r.total_return)}`}>{pct(r.total_return)}</td>
+                    <td className={`num strong ${signClass(r.total_return)}`}>{pct(r.total_return)}</td>
                     <td className={`num ${signClass(r.excess_return)}`}>{pct(r.excess_return)}</td>
                     <td className="num">{na(r.months_completed, 2) ? "n/a" : pctU(r.volatility)}</td>
                     <td className="num">{na(r.months_completed, 2) ? "n/a" : plain(r.sharpe)}</td>
                     <td className="num">{na(r.months_completed, 1) ? "n/a" : plain(r.sortino)}</td>
                     <td className="num">{na(r.months_completed, 2) ? "n/a" : plain(r.beta)}</td>
-                    <td className="num">{na(r.months_completed, 2) ? "n/a" : pctU(r.tracking_error)}</td>
                     <td className={`num ${signClass(r.max_drawdown)}`}>{na(r.months_completed, 1) ? "n/a" : pct(r.max_drawdown)}</td>
                     <td className="num">{na(r.months_completed, 1) ? "n/a" : plain(r.calmar)}</td>
                     <td className="num">{r.operations ?? 0}</td>
@@ -99,7 +135,7 @@ export default function Leaderboard() {
                     <td><button className="secondary small chart-toggle" aria-expanded={open === r.team_id}>{open === r.team_id ? "Hide" : "Details"}</button></td>
                   </tr>
                   {open === r.team_id && (
-                    <tr className="chart-row"><td colSpan={17}><RowDetail>
+                    <tr className="chart-row"><td colSpan={16}><RowDetail>
                       <div className="small muted" style={{ marginBottom: 8 }}>Portfolio value of {r.name} in euro compared with the MSCI World (both start at {eur(1_000_000, 0)})</div>
                       <PortfolioChart mode="value"
                         title={`Portfolio value of ${r.name}`}
@@ -119,7 +155,7 @@ export default function Leaderboard() {
             </table>
           </div>
           <p className="muted small">
-            Click a team to see its portfolio chart and every position it holds, with its performance. Ranking by total return in euro (Art. 12). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
+            Click a team to see its portfolio chart and every position it holds, with its performance. The official ranking is by total return in euro (Art. 12); click any column to rank the teams by that metric (click again to reverse). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
             and need {months < 2 ? "at least two completed months (n/a until then)" : `${months} completed months`}. Risk-free rate as set by the organiser.
           </p>
           <div className="card" style={{ marginTop: 20 }}>

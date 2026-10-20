@@ -78,6 +78,8 @@ function Teams() {
     setForm(empty);
     setBusy(false);
     await q.reload();
+    // value the new team at once (capital, leaderboard row) without waiting for the nightly run
+    callFunction("engine", { skipFetch: true }).catch(() => {});
   }
 
   if (q.error) return <Notice kind="err">{q.error}</Notice>;
@@ -186,6 +188,7 @@ function DrawB({ reload, setMsg }: { reload: () => void; setMsg: (m: { kind: "ok
     if (error) return setMsg({ kind: "err", text: errText(error) });
     setMsg({ kind: "ok", text: `${(data as any).teams} Competition B team(s) drawn for ${(data as any).people} people. Each team already has its chat.` });
     users.reload(); reload();
+    callFunction("engine", { skipFetch: true }).catch(() => {});
   }
   async function undo() {
     const typed = window.prompt("This deletes EVERY Competition B team with its orders, results and chat (accounts stay). Type DELETE B to confirm:");
