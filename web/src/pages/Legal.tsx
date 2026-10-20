@@ -30,13 +30,13 @@ export function Privacy() {
       <p>
         The public pages (home, leaderboard, rules) do not require registration and do not collect identifying personal data. To take part,
         team presidents and members register with their full name, e-mail address and a password; the password is stored only in encrypted
-        (hashed) form by the authentication service and is never visible to the organiser. The organiser receives the e-mail address of each
-        team president from the participating university or association and uses it only to allow that person to register as president.
+        (hashed) form by the authentication service and is never visible to the organiser. The organiser assigns each account to its
+        association's team and marks the team president; members join their team with the team code.
       </p>
       <p>
         Within a team, every member sees the names of the other members; the president also sees their e-mail addresses. The organiser sees
-        all accounts. The team name, university and results are published in the leaderboard; during the challenge positions and orders are
-        visible only to the team itself and become public after the end. If you accept the cookie notice, an anonymous random identifier is
+        all accounts. The team name, association and results are published in the leaderboard, together with each team's positions and their
+        performance; pending orders are visible only to the team itself. If you accept the cookie notice, an anonymous random identifier is
         stored in your browser and used only to count visits in aggregate form. Full IP addresses, cross-site browsing data, profiling data
         and advertising data are not collected by the site.
       </p>

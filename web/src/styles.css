@@ -586,3 +586,16 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-
 .auth-panel input[readonly] { cursor: text; }
 @media (max-width: 960px) { .hero-side { padding-top: 0; } }
 @media (max-height: 640px) and (min-width: 961px) { .hero-copy, .hero-side { padding-top: 6px; } }
+.auth-panel label .opt { color: var(--muted); font-weight: 400; }
+select.mini { min-height: 32px; padding: 4px 8px; font-size: 13px; max-width: 220px; }
+
+/* ---------------- sign-in box: same light edge and motion as the sponsor card, in white LED light */
+@property --led { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.auth-panel { position: relative; isolation: isolate; border: 1px solid transparent; background: transparent; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 0 28px -10px rgba(255, 255, 255, 0.22), 0 24px 60px -24px rgba(0, 0, 0, 0.7); }
+.auth-panel::before { content: ""; position: absolute; inset: -1px; z-index: -2; border-radius: 15px;
+  background: conic-gradient(from var(--led), rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.18) 22%, rgba(255, 255, 255, 0.6) 48%, rgba(255, 255, 255, 0.14) 72%, rgba(255, 255, 255, 0.95));
+  animation: led-run 9s linear infinite; }
+.auth-panel::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 14px; background: rgba(10, 13, 19, 0.9); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+@keyframes led-run { to { --led: 360deg; } }
+.auth-panel:hover, .auth-panel:focus-within { transform: translateY(-2px); box-shadow: 0 0 36px -8px rgba(255, 255, 255, 0.35), 0 18px 50px -20px rgba(255, 255, 255, 0.28); }
+@media (prefers-reduced-motion: reduce) { .auth-panel::before { animation: none; } .auth-panel, .auth-panel:hover, .auth-panel:focus-within { transform: none; transition: none; } }

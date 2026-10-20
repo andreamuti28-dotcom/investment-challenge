@@ -14,13 +14,13 @@ const expectErr = async (name: string, fn: () => Promise<unknown>, re: RegExp) =
 await db.exec(`
   create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   create schema auth;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
   create schema vault; create table vault.decrypted_secrets (name text, decrypted_secret text);
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -224,4 +224,24 @@ const prA = await as("anon", null, "select * from password_requests");
 ok("requests hidden from anon", prA.rows.length === 0);
 const prAd = await as("authenticated", ADMIN, "select email from password_requests");
 ok("admin sees the requests", prAd.rows.length === 1);
+// self-registration: join with the code, organiser sets presidents
+const U5 = "00000000-0000-0000-0000-000000000005", U6 = "00000000-0000-0000-0000-000000000006";
+await db.exec(`insert into auth.users values ('${U5}','new@uni.it','{"full_name":"Nuovo Membro"}'),('${U6}','six@uni.it',null)`);
+const j1 = await as("authenticated", U5, "select join_with_code('WRONG-CODE-0000') j");
+ok("wrong code refused", /not recognised/.test((j1.rows[0] as any).j.error ?? ""), JSON.stringify(j1.rows[0]));
+const j2 = await as("authenticated", U5, "select join_with_code('abcd efgh jklm') j");
+ok("joins with the code (any spacing/case)", (j2.rows[0] as any).j.team !== undefined, JSON.stringify(j2.rows[0]));
+const j3 = await as("authenticated", U5, "select join_with_code('ABCD-EFGH-JKLM') j");
+ok("cannot join twice", /already a member/.test((j3.rows[0] as any).j.error ?? ""));
+const mem5 = await db.query(`select role, full_name from team_members where user_id = '${U5}'`);
+ok("joined as member with the registration name", (mem5.rows[0] as any)?.role === "member" && (mem5.rows[0] as any)?.full_name === "Nuovo Membro", JSON.stringify(mem5.rows));
+for (let i = 0; i < 10; i++) await as("authenticated", U6, "select join_with_code('ZZZZ-ZZZZ-ZZZZ')");
+const j4 = await as("authenticated", U6, "select join_with_code('ABCD-EFGH-JKLM') j");
+ok("too many wrong codes blocked", /Too many/.test((j4.rows[0] as any).j.error ?? ""), JSON.stringify(j4.rows[0]));
+await expectErr("members cannot set roles", () => as("authenticated", U5, `select set_membership_admin('${U5}', '10000000-0000-0000-0000-000000000001', 'president')`), /Reserved/);
+await as("authenticated", ADMIN, `select set_membership_admin('${U5}', '10000000-0000-0000-0000-000000000001', 'president')`);
+const pres = await db.query(`select user_id from team_members where team_id = '10000000-0000-0000-0000-000000000001' and role = 'president'`);
+ok("organiser makes a president (only one per team)", pres.rows.length === 1 && (pres.rows[0] as any).user_id === U5, JSON.stringify(pres.rows));
+await as("authenticated", ADMIN, `select set_membership_admin('${U6}', '10000000-0000-0000-0000-000000000002', 'member')`);
+ok("organiser adds an account to a team", (await db.query(`select 1 from team_members where user_id = '${U6}'`)).rows.length === 1);
 console.log(fails ? `\n${fails} FAILED` : "\nALL DB TESTS PASSED");

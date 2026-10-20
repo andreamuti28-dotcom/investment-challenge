@@ -60,7 +60,7 @@ export default function Leaderboard() {
         </div>
         <p className="muted small">Last update: {data.run ? dateTime(data.run.finished_at) : "not yet calculated"}{data.run?.as_of ? ` · prices as of ${data.run.as_of}` : ""}</p>
       </div>
-      <Tabs value={comp} onChange={setComp} items={[["A", "Competition A · University teams"], ["B", "Competition B · International teams"]]} />
+      <Tabs value={comp} onChange={setComp} items={[["A", "Competition A · Association teams"], ["B", "Competition B · International teams"]]} />
       {rows.length === 0 ? (
         <p className="muted">No teams registered in this competition yet.</p>
       ) : (

@@ -5,14 +5,12 @@ import { useAuth } from "../lib/auth";
 import { Notice } from "./ui";
 
 type Mode = "signin" | "register" | "forgot";
-type Role = "president" | "member";
 
 /** Sign-in / registration / password recovery card shown over the hero image. */
 export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   const { session, isAdmin, team } = useAuth();
   const nav = useNavigate();
   const [mode, setMode] = useState<Mode>(initial);
-  const [role, setRole] = useState<Role>("member");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,8 +18,9 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<"ask" | "form" | "sent">("ask");
-  // Browsers must not fill the sign-in fields on page load: they stay read-only (browsers skip
-  // read-only fields) until the user clicks or tabs into one, then the saved logins are offered.
+  // Browsers must not fill the sign-in fields by themselves: until the user clicks or tabs into
+  // one, the form has no login fields at all for the password manager (plain read-only text
+  // inputs with autocomplete off); then they become e-mail/password and saved logins are offered.
   const [armed, setArmed] = useState(false);
   const arm = { readOnly: !armed, onMouseDown: () => setArmed(true), onTouchStart: () => setArmed(true), onFocus: () => setArmed(true) };
 
@@ -29,10 +28,11 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
     return (
       <div className="auth-panel auth-welcome" id="access">
         <div className="eyebrow">Signed in</div>
-        <div className="who" style={{ margin: "8px 0 4px" }}>{team ? team.name : "Organiser"}</div>
+        <div className="who" style={{ margin: "8px 0 4px" }}>{team ? team.name : isAdmin ? "Organiser" : "Welcome"}</div>
         <p className="sub">{session.user.email}{team ? ` · ${team.role}` : ""}</p>
         <div className="stack">
           {team && <Link className="btn primary" to="/team">Open my portfolio</Link>}
+          {!team && !isAdmin && <Link className="btn primary" to="/team">Join your team with the code</Link>}
           {isAdmin && <Link className="btn primary" to="/admin">Open the admin panel</Link>}
           <Link className="btn secondary" style={{ width: "100%" }} to="/leaderboard">See the leaderboard</Link>
           <button className="linklike" onClick={() => supabase.auth.signOut()}>Sign out</button>
@@ -62,7 +62,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
     if (password.length < 8) return setErr("The password must have at least 8 characters.");
     setBusy(true); setErr("");
     try {
-      await callFunction("register", { role, name, email: email.trim(), password, code: role === "member" ? code : undefined });
+      await callFunction("register", { name, email: email.trim(), password, code: code.trim() || undefined });
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
       nav("/team");
@@ -82,10 +82,10 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
 
       {mode === "signin" ? (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); signIn(); }}>
-          <div><label htmlFor="si-em">E-mail</label><input id="si-em" type="email" autoComplete="username" {...arm} required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div><label htmlFor="si-em">E-mail</label><input id="si-em" type={armed ? "email" : "text"} name={armed ? "email" : "ic-a"} autoComplete={armed ? "username" : "off"} {...arm} required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div>
             <div className="label-row"><label htmlFor="si-pw">Password</label><button type="button" className="linklike" onClick={() => { setMode("forgot"); setErr(""); setStep("ask"); }}>Forgot password?</button></div>
-            <input id="si-pw" type="password" autoComplete="current-password" {...arm} required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input id="si-pw" type={armed ? "password" : "text"} name={armed ? "password" : "ic-b"} autoComplete={armed ? "current-password" : "off"} {...arm} required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>
@@ -113,28 +113,16 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
         )
       ) : (
         <form className="stack" onSubmit={(e) => { e.preventDefault(); register(); }}>
-          <div>
-            <label>I am registering as</label>
-            <div className="role-pick" role="radiogroup" aria-label="Role">
-              <button type="button" role="radio" aria-checked={role === "president"} className={role === "president" ? "on" : ""} onClick={() => setRole("president")}>
-                President<small>Your e-mail was given to the organiser</small>
-              </button>
-              <button type="button" role="radio" aria-checked={role === "member"} className={role === "member" ? "on" : ""} onClick={() => setRole("member")}>
-                Member<small>You have the team code from your president</small>
-              </button>
-            </div>
-          </div>
           <div><label htmlFor="rg-nm">Full name</label><input id="rg-nm" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><label htmlFor="rg-em">E-mail{role === "president" ? " (the one registered by the organiser)" : ""}</label><input id="rg-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /><p className="small muted" style={{ margin: "6px 0 0" }}>Tip: with a university e-mail, WeFocusBuddy, our sponsor, is free.</p></div>
+          <div><label htmlFor="rg-em">E-mail</label><input id="rg-em" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /><p className="small muted" style={{ margin: "6px 0 0" }}>Tip: with a university e-mail, WeFocusBuddy, our sponsor, is free.</p></div>
           <div><label htmlFor="rg-pw">Password (at least 8 characters)</label><input id="rg-pw" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-          {role === "member" && (
-            <div>
-              <label htmlFor="rg-cd">Team code</label>
-              <input id="rg-cd" autoComplete="off" spellCheck={false} required placeholder="XXXX-XXXX-XXXX" style={{ fontFamily: "var(--mono)", letterSpacing: "0.1em" }}
-                value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
-            </div>
-          )}
-          <button type="submit" disabled={busy}>{busy ? "Creating your account…" : role === "president" ? "Register as president" : "Join my team"}</button>
+          <div>
+            <label htmlFor="rg-cd">Team code <span className="opt">(optional)</span></label>
+            <input id="rg-cd" autoComplete="off" spellCheck={false} placeholder="XXXX-XXXX-XXXX" style={{ fontFamily: "var(--mono)", letterSpacing: "0.1em" }}
+              value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+            <p className="small muted" style={{ margin: "6px 0 0" }}>Got it from your president? Enter it to join your team now, or later from your account.</p>
+          </div>
+          <button type="submit" disabled={busy}>{busy ? "Creating your account…" : "Create my account"}</button>
           <p className="sub" style={{ margin: 0 }}>By registering you accept the <Link to="/privacy">privacy notice</Link>.</p>
         </form>
       )}

@@ -112,7 +112,7 @@ export default function Home() {
           <div><div className="eyebrow">01 · How it works</div><h2>Three moves<br />to the top.</h2></div>
         </div>
         <div className="steps reveal">
-          <div className="step"><div className="n">01</div><h3>Form your team</h3><p>The president registers with the e-mail given to the organiser and shares the team code. Every member joins with that code.</p></div>
+          <div className="step"><div className="n">01</div><h3>Form your team</h3><p>Everyone registers with their own account. Your association's president gets the team code from the organiser and shares it: every member joins the team with that code.</p></div>
           <div className="step"><div className="n">02</div><h3>Trade at the close</h3><p>Buy, sell or short any listed stock in the world. Orders are executed at that day's closing price, on the stock's own exchange.</p></div>
           <div className="step"><div className="n">03</div><h3>Beat the benchmark</h3><p>Portfolios are valued daily against the MSCI World. The highest total return in euro wins; risk metrics are public for all.</p></div>
         </div>
@@ -125,8 +125,8 @@ export default function Home() {
             <div><div className="eyebrow">02 · Two competitions</div><h2>Same rules.<br />Separate podiums.</h2></div>
           </div>
           <div className="comps reveal">
-            <div className="comp"><div className="letter">A</div><h3>University teams</h3><p>Students from a single university competing for their institution.</p></div>
-            <div className="comp"><div className="letter">B</div><h3>International teams</h3><p>Students from different universities and countries, building one portfolio together.</p></div>
+            <div className="comp"><div className="letter">A</div><h3>Association teams</h3><p>Members of a single student association competing for it.</p></div>
+            <div className="comp"><div className="letter">B</div><h3>International teams</h3><p>Students from different associations and countries, building one portfolio together.</p></div>
           </div>
         </section>
       </div>
@@ -137,7 +137,7 @@ export default function Home() {
           <div><div className="eyebrow">03 · Key dates</div><h2>Mark the calendar.</h2></div>
         </div>
         <ol className="dates reveal">
-          <li><div className="when">{s ? date(s.registration_deadline) : "15 Nov 2026"}</div><h3>Registration</h3><p>Universities confirm their teams and presidents.</p></li>
+          <li><div className="when">{s ? date(s.registration_deadline) : "15 Nov 2026"}</div><h3>Registration</h3><p>Associations confirm their teams and presidents.</p></li>
           <li><div className="when">Before the start</div><h3>Initial portfolio</h3><p>Teams place their first orders.</p></li>
           <li><div className="when">{start}</div><h3>The bell rings</h3><p>Initial portfolios executed at the closing price.</p></li>
           <li><div className="when">{end}</div><h3>Final valuation</h3><p>Results in euro at the ECB reference rate.</p></li>

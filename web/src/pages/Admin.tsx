@@ -47,7 +47,7 @@ function Teams() {
       must(supabase.from("teams").select("*").order("competition").order("name")),
       must(supabase.from("team_contacts").select("*")),
       must(supabase.from("team_access").select("team_id,code,updated_at")),
-      must(supabase.from("team_members").select("team_id,role")),
+      must(supabase.from("team_members").select("team_id,role,full_name")),
     ]);
     const c = Object.fromEntries((contacts as any[]).map((x) => [x.team_id, x]));
     const a = Object.fromEntries((access as any[]).map((x) => [x.team_id, x]));
@@ -55,29 +55,23 @@ function Teams() {
     return (teams as any[]).map((t) => ({
       ...t, contact: c[t.id] ?? {}, access: a[t.id] ?? null,
       members: m.filter((x) => x.team_id === t.id).length,
-      presidentRegistered: m.some((x) => x.team_id === t.id && x.role === "president"),
+      president: m.find((x) => x.team_id === t.id && x.role === "president")?.full_name ?? null,
     }));
   });
-  const empty = { name: "", competition: "A", university: "", president_email: "", contact_name: "" };
+  const empty = { name: "", competition: "A", university: "" };
   const [form, setForm] = useState(empty);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: ReactNode } | null>(null);
   const [busy, setBusy] = useState(false);
-  const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.president_email.trim());
 
   async function addTeam() {
     setMsg(null); setBusy(true);
-    const email = form.president_email.trim().toLowerCase();
     const { data, error } = await supabase.from("teams").insert({
-      name: form.name.trim(), competition: form.competition, university: form.university.trim() || null, president_email: email,
+      name: form.name.trim(), competition: form.competition, university: form.university.trim() || null,
     }).select().single();
-    if (error) {
-      setBusy(false);
-      return setMsg({ kind: "err", text: /president_email/.test(error.message) ? "This president e-mail is already used by another team." : errText(error) });
-    }
-    await supabase.from("team_contacts").insert({ team_id: data.id, contact_name: form.contact_name || null, contact_email: email });
+    if (error) { setBusy(false); return setMsg({ kind: "err", text: errText(error) }); }
     try {
       const r = await callFunction("admin", { action: "set_team_code", teamId: data.id });
-      setMsg({ kind: "ok", text: <>Team <b>{data.name}</b> created. The president registers with <b>{email}</b>. Team code for the members: <span className="secret">{r.code}</span> (the president also sees it in the Team tab).</> });
+      setMsg({ kind: "ok", text: <>Team <b>{data.name}</b> created. Team code: <span className="secret">{r.code}</span> Give it to the president (mark them in Accounts once they have registered): members join the team with it.</> });
     } catch (e) {
       setMsg({ kind: "err", text: `Team created, but the team code could not be generated: ${errText(e)}. Use "Generate code" in the table.` });
     }
@@ -93,14 +87,12 @@ function Teams() {
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <div className="card">
         <h3>Add a team</h3>
-        <p className="muted small">Only the e-mail you enter here can register as the team's president. A team code is generated automatically: the president sees it and shares it with the members, who register with it.</p>
+        <p className="muted small">A team code is generated automatically. Give it to the president: everyone registers with their own account and joins the team with the code. You choose the president in the Accounts tab.</p>
         <div className="row">
           <div className="field"><label htmlFor="tn">Team name</label><input id="tn" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-          <div className="field narrow"><label htmlFor="tcomp">Competition</label><select id="tcomp" value={form.competition} onChange={(e) => setForm({ ...form, competition: e.target.value })}><option value="A">A · University</option><option value="B">B · International</option></select></div>
-          <div className="field"><label htmlFor="tu">University / composition</label><input id="tu" value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })} /></div>
-          <div className="field"><label htmlFor="tpe">President e-mail</label><input id="tpe" type="email" value={form.president_email} onChange={(e) => setForm({ ...form, president_email: e.target.value })} placeholder="president@university.eu" /></div>
-          <div className="field"><label htmlFor="tcn">President name (optional)</label><input id="tcn" value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} /></div>
-          <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim() || !validEmail} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
+          <div className="field narrow"><label htmlFor="tcomp">Competition</label><select id="tcomp" value={form.competition} onChange={(e) => setForm({ ...form, competition: e.target.value })}><option value="A">A · Associations</option><option value="B">B · International</option></select></div>
+          <div className="field"><label htmlFor="tu">Association / composition</label><input id="tu" value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })} /></div>
+          <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim()} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
         </div>
       </div>
       <div className="table-wrap">
@@ -118,16 +110,7 @@ function Teams() {
 function TeamRow({ t, reload, setMsg }: any) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [email, setEmail] = useState<string>(t.president_email ?? "");
   const code: string | null = t.access?.code ?? null;
-  async function saveEmail() {
-    const v = email.trim().toLowerCase();
-    if (v === (t.president_email ?? "")) return;
-    if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return setMsg({ kind: "err", text: "Invalid e-mail address." });
-    const { error } = await supabase.from("teams").update({ president_email: v || null }).eq("id", t.id);
-    if (error) setMsg({ kind: "err", text: /president_email/.test(error.message) ? "This e-mail is already used by another team." : errText(error) });
-    else { setMsg({ kind: "ok", text: `President e-mail of ${t.name} saved.` }); reload(); }
-  }
   async function setCode() {
     if (code && !window.confirm(`Replace the team code of ${t.name}? The old code stops working for new registrations; members already registered are not affected.`)) return;
     setBusy(true);
@@ -156,13 +139,7 @@ function TeamRow({ t, reload, setMsg }: any) {
     <tr>
       <td><b>{t.name}</b><div className="muted small">{t.university}</div></td>
       <td>{t.competition}</td>
-      <td style={{ minWidth: 240 }}>
-        <input aria-label={`President e-mail of ${t.name}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} onBlur={saveEmail}
-          disabled={t.presidentRegistered} style={{ minHeight: 34, padding: "6px 10px" }} />
-        <div className="small" style={{ marginTop: 4 }}>
-          {t.presidentRegistered ? <span className="badge ok">registered</span> : <span className="badge pending">waiting for registration</span>}
-        </div>
-      </td>
+      <td>{t.president ? <><b>{t.president}</b></> : <span className="badge pending">not set</span>}<div className="muted small" style={{ marginTop: 4 }}>set in Accounts</div></td>
       <td className="num">{t.members}</td>
       <td>
         {code ? (
@@ -193,6 +170,15 @@ function TeamRow({ t, reload, setMsg }: any) {
 // ------------------------------------------------------------------ accounts
 function Accounts() {
   const q = useLoad(async () => (await callFunction("admin", { action: "list_users" })).users as any[]);
+  const teams = useLoad(async () => must(supabase.from("teams").select("id,name,competition").order("competition").order("name")) as Promise<any[]>);
+  async function setMembership(u: any, teamId: string, role: string) {
+    if (!teamId) return;
+    const t = (teams.data ?? []).find((x) => x.id === teamId);
+    if (role === "president" && !window.confirm(`Make ${u.name ?? u.email} the president of ${t?.name}? The current president, if any, becomes a member. The president sees the team code and shares it with the members.`)) return;
+    const { error } = await supabase.rpc("set_membership_admin", { p_user: u.id, p_team: teamId, p_role: role });
+    setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: `${u.name ?? u.email}: ${role} of ${t?.name}.` });
+    await q.reload();
+  }
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: ReactNode } | null>(null);
   if (q.error) return <Notice kind="err">{q.error}</Notice>;
   if (!q.data) return <Loading />;
@@ -201,15 +187,26 @@ function Accounts() {
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <PasswordRequests users={q.data} onMessage={setMsg} />
       <h3 style={{ marginTop: 8 }}>All accounts</h3>
-      <p className="muted small">Every account that can sign in. Deleting a member or president removes only that person: the team and its results stay. A deleted president can register again with the same e-mail. To remove a whole team, use "Delete team" in the Teams tab.</p>
+      <p className="muted small">Everyone registers with their own account as a member. Here you put an account in a team and choose who is the president (one per team): the president sees the team code in the Team tab and shares it; members can also join by themselves with the code. Every account that can sign in. Deleting a member or president removes only that person: the team and its results stay. A deleted person can register again with the same e-mail. To remove a whole team, use "Delete team" in the Teams tab.</p>
       <div className="table-wrap"><table>
         <thead><tr><th>Name</th><th>E-mail</th><th>Role</th><th>Team</th><th>Created</th><th>Last sign-in</th><th /></tr></thead>
         <tbody>{q.data.map((u) => (
           <tr key={u.id}>
             <td>{u.name ?? "–"}{u.self && <span className="badge" style={{ marginLeft: 6 }}>you</span>}</td>
             <td className="small">{u.email}</td>
-            <td><span className={`badge ${u.kind === "admin" || u.kind === "president" ? "president" : ""}`}>{u.kind}</span></td>
-            <td>{u.team ?? "–"}</td>
+            <td>{u.kind === "admin" ? <span className="badge president">admin</span> : (
+              <select aria-label={`Role of ${u.email}`} className="mini" value={u.teamId ? u.kind : ""} disabled={!u.teamId}
+                onChange={(e) => setMembership(u, u.teamId, e.target.value)}>
+                {!u.teamId && <option value="">no team</option>}
+                <option value="member">member</option><option value="president">president</option>
+              </select>
+            )}</td>
+            <td>{u.kind === "admin" ? "–" : (
+              <select aria-label={`Team of ${u.email}`} className="mini" value={u.teamId ?? ""} onChange={(e) => setMembership(u, e.target.value, u.teamId ? (u.kind === "president" ? "member" : u.kind) : "member")}>
+                {!u.teamId && <option value="">– choose a team –</option>}
+                {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.competition} · {t.name}</option>)}
+              </select>
+            )}</td>
             <td className="small">{date(u.createdAt)}</td>
             <td className="small">{u.lastSignIn ? dateTime(u.lastSignIn) : "never"}</td>
             <td>{!u.self && (

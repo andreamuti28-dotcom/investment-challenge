@@ -110,7 +110,7 @@ function rome(iso: string | null | undefined): Date | null {
   return new Date(Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute));
 }
 const fmtDate = (s: string) => new Date(s.slice(0, 10) + "T12:00:00Z").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-const COMP: Record<string, string> = { A: "Competition A · University teams", B: "Competition B · International teams" };
+const COMP: Record<string, string> = { A: "Competition A · Association teams", B: "Competition B · International teams" };
 const sign = (side: string) => (side === "long" ? 1 : -1);
 const ccyOrder = (a: string, b: string) => (a === "EUR" ? -1 : b === "EUR" ? 1 : a.localeCompare(b));
 const sheetSafe = (s: string) => s.replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
@@ -288,7 +288,7 @@ export async function buildWorkbook(x: ExportData, Excel: typeof ExcelJS): Promi
     sectionTitle(ws, 4, "Team", 5);
     const a1 = infoBlock(ws, 5, [
       { key: "team", label: "Team", value: one.name },
-      { key: "uni", label: "University", value: one.university ?? "–" },
+      { key: "uni", label: "Association", value: one.university ?? "–" },
       { key: "comp", label: "Competition", value: COMP[one.competition] ?? one.competition },
       { key: "asof", label: "Valuation date", value: d(asOf), fmt: F.date },
       { key: "period", label: "Challenge period", value: `${fmtDate(S.start_date)} – ${fmtDate(S.end_date)}` },
@@ -329,7 +329,7 @@ export async function buildWorkbook(x: ExportData, Excel: typeof ExcelJS): Promi
     const cols: Col<any>[] = [
       { key: "rank", header: "Rank", width: 7, fmt: F.int, value: (t) => n(lb[t.id]?.rank_in_competition) },
       { key: "team", header: "Team", width: 28, value: (t) => t.name, bold: true },
-      { key: "uni", header: "University", width: 28, value: (t) => t.university ?? "" },
+      { key: "uni", header: "Association", width: 28, value: (t) => t.university ?? "" },
       { key: "nav", header: "Value (€)", width: 16, fmt: F.money, value: (t) => n(lb[t.id]?.nav) },
       { key: "ret", header: "Total return", width: 11, fmt: F.ret, value: (t) => n(lb[t.id]?.total_return), formula: (r, c) => `IF(${c("nav")}${r}="","",${c("nav")}${r}/${capRef}-1)` },
       { key: "bret", header: "Benchmark", width: 11, fmt: F.ret, value: (t) => n(lb[t.id]?.benchmark_return) },

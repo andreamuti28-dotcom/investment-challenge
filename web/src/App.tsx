@@ -11,6 +11,7 @@ import ResetPassword from "./pages/ResetPassword";
 import { Cookies, Privacy } from "./pages/Legal";
 import CookieBanner from "./components/CookieBanner";
 import AuthPanel from "./components/AuthPanel";
+import JoinTeam from "./components/JoinTeam";
 import { openCookiePreferences, trackVisit } from "./lib/consent";
 
 const SPONSOR_URL = "https://wefocusbuddy.com/a";
@@ -25,7 +26,7 @@ function Guard({ need, children }: { need: "team" | "admin"; children: ReactNode
   if (!session) return <Navigate to="/login" replace />;
   if (need === "admin" && !isAdmin) return <p>This area is reserved to the organiser.</p>;
   if (need === "team" && !team) {
-    return isAdmin ? <Navigate to="/admin" replace /> : <p>Your account is not linked to a team. Please contact the organiser.</p>;
+    return isAdmin ? <Navigate to="/admin" replace /> : <JoinTeam />;
   }
   return <>{children}</>;
 }
@@ -74,7 +75,7 @@ export default function App() {
             <nav className="nav" aria-label="Main">
               <NavLink to="/" end>Home</NavLink>
               <NavLink to="/leaderboard">Leaderboard</NavLink>
-              {team && <NavLink to="/team">My team</NavLink>}
+              {(team || (session && !isAdmin)) && <NavLink to="/team">My team</NavLink>}
               {isAdmin && <NavLink to="/admin">Admin</NavLink>}
             </nav>
             <div className="nav-right">

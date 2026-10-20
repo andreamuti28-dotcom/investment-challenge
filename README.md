@@ -124,3 +124,7 @@ npm test             # test del motore (Node 22)
 npm run test:db      # database e runner su Postgres locale (PGlite)
 cd web && cp .env.example .env && npm install && npm run dev
 ```
+
+## Accessi (dal 20/10/2026)
+
+Ogni persona si registra con il proprio account come membro (nome, e-mail, password, codice team facoltativo). Chi non inserisce il codice alla registrazione lo inserisce dopo il primo accesso. L'organizzatore in Admin > Accounts assegna team e ruolo (un presidente per team); il presidente vede il codice del team nella scheda Team e lo condivide. "Forgot password?" invia una richiesta all'organizzatore (mail via Resend, chiave in Vault `resend_api_key`), che resetta la password da Admin > Accounts.
