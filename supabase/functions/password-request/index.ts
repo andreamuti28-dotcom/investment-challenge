@@ -1,6 +1,6 @@
 // Public: "Forgot password?" from the sign-in box. Records the request (only for existing
 // accounts, rate limited in the database) and notifies the organiser by e-mail (Resend, when
-// RESEND_API_KEY is set) and on Telegram (when the engine's Telegram bot is configured).
+// a key is set: RESEND_API_KEY secret or 'resend_api_key' in Vault) and on Telegram (when the engine's Telegram bot is configured).
 // The answer is always the same, so nobody can find out whether an e-mail is registered.
 import { cors, env, json, serviceHeaders } from "../_shared/http.ts";
 
@@ -20,7 +20,8 @@ Deno.serve(async (req) => {
   if (res?.stored) {
     const who = `${res.name ?? "(no name)"} <${res.email}>${res.team ? ` · ${res.team}` : ""}`;
     const site = Deno.env.get("SITE_URL") ?? "https://andreamuti28-dotcom.github.io/investment-challenge/";
-    const key = Deno.env.get("RESEND_API_KEY");
+    const key = Deno.env.get("RESEND_API_KEY") ?? await fetch(`${e.supabaseUrl}/rest/v1/rpc/mail_api_key`, { method: "POST", headers: serviceHeaders(e.serviceKey), body: "{}" })
+      .then((x) => (x.ok ? x.json() : null)).catch(() => null);
     const to: string[] = (Deno.env.get("ORGANISER_EMAIL")?.split(",").map((x) => x.trim()).filter(Boolean)) ?? res.organisers ?? [];
     if (key && to.length) {
       await fetch("https://api.resend.com/emails", {
@@ -41,7 +42,7 @@ Deno.serve(async (req) => {
             <p>Open <a href="${esc(site)}admin">Admin &gt; Accounts</a> and click <b>Reset password</b>: you get a temporary password to send them privately. Their account, team and portfolio stay as they are.</p>
           </div>`,
         }),
-      }).catch(() => {});
+      }).then(async (x) => { if (!x.ok) console.error("resend", x.status, await x.text()); }).catch((err) => console.error("resend", String(err)));
     }
     if (e.telegramToken && e.telegramChatId) {
       await fetch(`https://api.telegram.org/bot${e.telegramToken}/sendMessage`, {
