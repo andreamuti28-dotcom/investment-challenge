@@ -24,7 +24,7 @@ jobs:
       - run: npm run build && cp dist/index.html dist/404.html
         working-directory: web
         env:
-          VITE_BASE: ${{ vars.SITE_BASE || format('/{0}/', github.event.repository.name) }}
+          VITE_BASE: ${{ vars.SITE_BASE || '/' }}  # site served at https://investmentchallenge.org/
       - uses: actions/upload-pages-artifact@v3
         with: { path: web/dist }
   deploy:

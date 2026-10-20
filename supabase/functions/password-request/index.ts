@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
   const res = r.ok ? await r.json() : null;
   if (res?.stored) {
     const who = `${res.name ?? "(no name)"} <${res.email}>${res.team ? ` · ${res.team}` : ""}`;
-    const site = Deno.env.get("SITE_URL") ?? "https://andreamuti28-dotcom.github.io/investment-challenge/";
+    const site = Deno.env.get("SITE_URL") ?? "https://investmentchallenge.org/";
     const key = Deno.env.get("RESEND_API_KEY") ?? await fetch(`${e.supabaseUrl}/rest/v1/rpc/mail_api_key`, { method: "POST", headers: serviceHeaders(e.serviceKey), body: "{}" })
       .then((x) => (x.ok ? x.json() : null)).catch(() => null);
     const to: string[] = (Deno.env.get("ORGANISER_EMAIL")?.split(",").map((x) => x.trim()).filter(Boolean)) ?? res.organisers ?? [];
