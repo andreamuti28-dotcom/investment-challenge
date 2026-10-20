@@ -8,10 +8,10 @@ const SPONSOR_URL = "https://wefocusbuddy.com";
 
 /** Logos of the participating associations: add { name, logo, url } entries (logo files in web/public/partners/). */
 const PARTNERS: { name: string; short: string; logo: string; url?: string }[] = [
-  { name: "Imperial College London", short: "Imperial", logo: "imperial.png" },
-  { name: "Starting Finance Club Guido Carli (Luiss)", short: "Luiss Guido Carli", logo: "guido-carli.png" },
-  { name: "Amsterdam", short: "Amsterdam", logo: "amsterdam.png" },
-  { name: "Starting Finance Club Bicocca", short: "Milano-Bicocca", logo: "bicocca.png" },
+  { name: "EFDS Society - Imperial College London", short: "EFDS Society - Imperial College London", logo: "imperial.png" },
+  { name: "Starting Finance Club Guido Carli - Luiss University", short: "Starting Finance Club Guido Carli - Luiss University", logo: "guido-carli.png" },
+  { name: "Financial Study Association Amsterdam", short: "Financial Study Association Amsterdam", logo: "amsterdam.png" },
+  { name: "Starting Finance Club Bicocca - Milano Bicocca", short: "Starting Finance Club Bicocca - Milano Bicocca", logo: "bicocca.png" },
 ];
 
 function Partners() {
@@ -24,7 +24,7 @@ function Partners() {
         <div className="partners-marquee">
           <div className="partners-track">
           {[0, 1, 2, 3].flatMap((copy) => PARTNERS.map((p) => ({ ...p, copy }))).map((p) => {
-            const inner = <><span className="logo-tile"><img src={`${import.meta.env.BASE_URL}partners/${p.logo}`} alt={p.name} loading="lazy" /></span><span className="logo-name">{p.short}</span></>;
+            const inner = <><span className="logo-tile"><img src={`${import.meta.env.BASE_URL}partners/${p.logo}`} alt={p.name} loading="lazy" /></span><span className="logo-name">{p.short.split(" - ").map((x, i) => <span key={i} className={i ? "uni" : ""}>{x}</span>)}</span></>;
             return p.url
               ? <a key={`${p.copy}-${p.name}`} className="partner" href={p.url} target="_blank" rel="noreferrer" title={p.name} aria-hidden={p.copy > 0} tabIndex={p.copy > 0 ? -1 : undefined}>{inner}</a>
               : <span key={`${p.copy}-${p.name}`} className="partner" title={p.name} aria-hidden={p.copy > 0}>{inner}</span>;
@@ -70,7 +70,7 @@ export default function Home() {
             <h1>Trade the world.<br /><span className="dim">Beat the index.</span></h1>
             <Partners />
             <div className="hero-facts">
-              <span>{capital} per team</span><span>Long &amp; short</span><span>Daily close</span><span>{data?.months.length ?? 6} months</span>
+              <span>{capital} per team</span><span>Long &amp; short</span><span>Daily close</span><span>6 months</span>
             </div>
           </div>
           <AuthPanel />

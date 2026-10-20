@@ -19,7 +19,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -193,9 +193,9 @@ ok("Leon NAV m2 1001500.00 (no currency transfer)", m.Leon2 === 1001500.0, Strin
 const ost = await db.query(`select symbol, month_n, status, reject_source, executed_price from orders order by month_n, symbol`);
 console.log(ost.rows);
 const pos1 = await as("authenticated", U1, "select symbol, exit_reason from positions");
-ok("team sees only its own positions", pos1.rows.length === 2);
+ok("teams see every team's positions", pos1.rows.length === 3, String(pos1.rows.length));
 const pos0 = await as("anon", null, "select * from positions");
-ok("positions private during the challenge", pos0.rows.length === 0);
+ok("positions public during the challenge", pos0.rows.length === 3, String(pos0.rows.length));
 const sp = await as("authenticated", U2, "select currency, round(total_eur,2) t from subportfolios order by 1");
 ok("Leon sub-portfolios", JSON.stringify(sp.rows) === JSON.stringify([{ currency: "EUR", t: "1001500.00" }].map((x) => ({ ...x, t: x.t }))), JSON.stringify(sp.rows));
 await as("service_role", null, `select engine_log('ok','2027-01-29','test','log','[]'::jsonb)`);

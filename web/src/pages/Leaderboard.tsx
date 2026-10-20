@@ -5,6 +5,7 @@ import { dateTime, eur, pct, pctU, plain, signClass } from "../lib/format";
 import { Loading, Notice, Tabs } from "../components/ui";
 import { PALETTE, type Series } from "../components/LineChart";
 import { PortfolioChart } from "../components/PortfolioChart";
+import { TeamHoldings } from "../components/TeamHoldings";
 
 interface Row {
   team_id: string; name: string; competition: "A" | "B"; university: string | null; nav: number | null;
@@ -95,7 +96,7 @@ export default function Leaderboard() {
                     <td className="num">{pctU(r.max_weight)}</td>
                     <td className="num">{plain(r.hhi, 3)}</td>
                     <td className="num">{r.violations ?? 0}</td>
-                    <td><button className="secondary small chart-toggle" aria-expanded={open === r.team_id}>{open === r.team_id ? "Hide" : "Chart"}</button></td>
+                    <td><button className="secondary small chart-toggle" aria-expanded={open === r.team_id}>{open === r.team_id ? "Hide" : "Details"}</button></td>
                   </tr>
                   {open === r.team_id && (
                     <tr className="chart-row"><td colSpan={17}>
@@ -108,6 +109,8 @@ export default function Leaderboard() {
                           { name: "MSCI World (SWDA)", color: "#8a94a3", dashed: true, benchmark: true, points: data.bench.map((b) => ({ x: b.date, y: Number(b.value_eur) })) },
                         ]}
                       />
+                      <h3 style={{ margin: "18px 0 8px" }}>Positions of {r.name}</h3>
+                      <TeamHoldings teamId={r.team_id} />
                     </td></tr>
                   )}
                   </Fragment>
@@ -116,7 +119,7 @@ export default function Leaderboard() {
             </table>
           </div>
           <p className="muted small">
-            Click a team to see the chart of its portfolio value. Ranking by total return in euro (Art. 12). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
+            Click a team to see its portfolio chart and every position it holds, with its performance. Ranking by total return in euro (Art. 12). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
             and need {months < 2 ? "at least two completed months (n/a until then)" : `${months} completed months`}. Risk-free rate as set by the organiser.
           </p>
           <div className="card" style={{ marginTop: 20 }}>
