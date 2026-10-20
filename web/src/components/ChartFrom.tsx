@@ -22,7 +22,7 @@ export function useChallengeStart(): string | null {
 export function ChartFrom({ value, onChange, min, start, presets = true }: {
   value: string; onChange: (v: string) => void; min: string; start: string; presets?: boolean;
 }) {
-  const choices: [string, string][] = [["Challenge start", start], ["1Y", yearsAgo(1)], ["2Y", yearsAgo(2)], ["5Y", yearsAgo(5)]];
+  const choices: [string, string][] = [["Challenge start", start], ["1Y", yearsAgo(1)], ["2Y", yearsAgo(2)]];
   return (
     <div className="row chart-from" style={{ gap: 8 }}>
       <label htmlFor={`from-${start}-${min}`} style={{ margin: 0 }}>From</label>

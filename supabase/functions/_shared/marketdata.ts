@@ -73,8 +73,23 @@ export interface ParsedChart {
   /** regular-session closing time in exchange local time, "HH:MM" */
   closeTime: string | null;
   prices: { date: string; close: number }[];
+  /** isolated bad ticks removed from prices (see despike) */
+  dropped: { date: string; close: number }[];
   dividends: { date: string; value: number }[];
   splits: { date: string; value: number }[];
+}
+
+/** Removes isolated bad ticks: a close that jumps more than 20% away from the day before and
+ *  comes back the next day (the days around it within 5% of each other). Real moves persist. */
+export function despike(prices: { date: string; close: number }[]) {
+  const keep: typeof prices = [], dropped: typeof prices = [];
+  for (let i = 0; i < prices.length; i++) {
+    const a = prices[i - 1]?.close, b = prices[i].close, c = prices[i + 1]?.close;
+    const spike = a !== undefined && c !== undefined && Math.abs(b / a - 1) > 0.2 && Math.abs(c / b - 1) > 0.2 &&
+      Math.sign(b - a) !== Math.sign(c - b) && Math.abs(c / a - 1) < 0.05;
+    (spike ? dropped : keep).push(prices[i]);
+  }
+  return { prices: keep, dropped };
 }
 
 const localDate = (ts: number, gmtoffset: number) => new Date((ts + gmtoffset) * 1000).toISOString().slice(0, 10);
@@ -118,7 +133,7 @@ export function parseChart(json: any, nowMs = Date.now()): ParsedChart {
     lastPrice: typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice / divisor : null,
     timezone: typeof meta.exchangeTimezoneName === "string" ? meta.exchangeTimezoneName : null,
     closeTime: reg?.end ? new Date((reg.end + Number(reg.gmtoffset ?? off)) * 1000).toISOString().slice(11, 16) : null,
-    prices: [...byDate].sort().map(([date, close]) => ({ date, close })),
+    ...despike([...byDate].sort().map(([date, close]) => ({ date, close }))),
     dividends,
     splits,
   };

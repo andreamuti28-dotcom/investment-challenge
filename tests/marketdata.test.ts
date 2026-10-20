@@ -62,3 +62,13 @@ test("Yahoo chart: exchange time zone and closing time (local)", () => {
   assert.equal(c.closeTime, "16:00");
   assert.equal(parseChart(vod).closeTime, "16:30");
 });
+
+test("isolated bad ticks are removed, real moves are kept", async () => {
+  const { despike } = await import("../supabase/functions/_shared/marketdata.ts");
+  const p = (date: string, close: number) => ({ date, close });
+  const r = despike([p("a", 110), p("b", 147), p("c", 111), p("d", 112)]);
+  assert.deepEqual(r.dropped, [p("b", 147)]);
+  assert.equal(r.prices.length, 3);
+  const crash = despike([p("a", 100), p("b", 70), p("c", 72), p("d", 71)]); // a real -30% that persists
+  assert.equal(crash.dropped.length, 0);
+});

@@ -123,6 +123,9 @@ export async function runOnce(
             warnings.push(`${sym}: Yahoo quote unit changed (divisor ${c.divisor} vs ${expected}), check manually`);
           }
           for (const p of c.prices) if (p.date >= fetchStart) prices.push([sym, p.date, p.close]);
+          for (const p of c.dropped) {
+            if (p.date >= fetchStart) warnings.push(`${sym}: Yahoo close ${p.close} on ${p.date} looks like a bad tick and was ignored; insert the correct price manually if needed`);
+          }
           for (const d of c.dividends) if (d.date >= fetchStart) events.push([sym, d.date, "dividend", d.value]);
           for (const s of c.splits) if (s.date >= fetchStart) events.push([sym, s.date, "split", s.value]);
         } catch (e) {

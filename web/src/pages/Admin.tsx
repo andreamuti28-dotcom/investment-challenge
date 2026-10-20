@@ -347,8 +347,13 @@ function MarketData() {
   if (!q.data) return <Loading />;
   return (
     <>
-      <Notice kind="warn">Manual values always win over Yahoo Finance and the ECB for the same day (Art. 14). Prices are in the main currency unit (pounds, not pence). FX rates are units of currency per 1 EUR.</Notice>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      <details className="card manual-box" open={(q.data.prices.length + q.data.fx.length + q.data.events.length) > 0 || undefined}>
+        <summary>
+          <b>Manual corrections</b>
+          <span className="muted small"> · only if the engine reports a wrong or missing price, rate or dividend ({(q.data.prices.length + q.data.fx.length + q.data.events.length)} saved)</span>
+        </summary>
+      <Notice kind="warn">Manual values always win over Yahoo Finance and the ECB for the same day (Art. 14). Prices are in the main currency unit (pounds, not pence). FX rates are units of currency per 1 EUR.</Notice>
       <div className="grid cols-3">
         <div className="card stack">
           <h3>Manual price</h3>
@@ -399,6 +404,7 @@ function MarketData() {
           </tbody>
         </table></div>
       </div>
+      </details>
 
       <div className="card">
         <h3>Instruments ({q.data.instruments.length})</h3>

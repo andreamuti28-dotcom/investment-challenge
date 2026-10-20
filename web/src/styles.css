@@ -318,3 +318,28 @@ button.linklike:hover:not(:disabled) { background: none; color: #fff; border: 0;
 tr.chart-row > td { background: var(--bg-2); padding: 18px 20px; }
 tr.clickable { cursor: pointer; }
 .chart-toggle { white-space: nowrap; }
+
+/* partner logos: endless glide with soft edges; pauses on hover */
+.partners-marquee { position: relative; overflow: hidden; padding: 6px 0 4px; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%); }
+.partners-track { display: flex; gap: 22px; width: max-content; animation: partners-glide 22s linear infinite; }
+.partners-marquee:hover .partners-track { animation-play-state: paused; }
+@keyframes partners-glide { from { transform: translateX(0); } to { transform: translateX(calc(-50% - 11px)); } }
+.partners-track .partner { flex: 0 0 auto; }
+.partners-track .logo-tile { animation: partners-float 6s ease-in-out infinite; }
+.partners-track .partner:nth-child(4n + 2) .logo-tile { animation-delay: -1.5s; }
+.partners-track .partner:nth-child(4n + 3) .logo-tile { animation-delay: -3s; }
+.partners-track .partner:nth-child(4n + 4) .logo-tile { animation-delay: -4.5s; }
+@keyframes partners-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.partners-track .partner:hover .logo-tile { box-shadow: 0 0 0 2px #fff, 0 12px 34px rgba(122, 162, 255, 0.45); transform: scale(1.08); }
+@media (prefers-reduced-motion: reduce) {
+  .partners-track { animation: none; }
+  .partners-track .logo-tile { animation: none; }
+  .partners-track .partner[aria-hidden="true"] { display: none; }
+}
+
+details.manual-box > summary { cursor: pointer; list-style: none; padding: 2px 0; }
+details.manual-box > summary::-webkit-details-marker { display: none; }
+details.manual-box > summary::before { content: "+"; display: inline-block; width: 18px; color: var(--accent); font-weight: 600; }
+details.manual-box[open] > summary::before { content: "–"; }
+details.manual-box[open] > summary { margin-bottom: 16px; }
+details.manual-box .card { background: var(--bg-2); }

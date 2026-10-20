@@ -29,7 +29,11 @@ export function LineChart({ series, yFormat, title, markers = [] }: { series: Se
   const ticks = Array.from({ length: 5 }, (_, i) => y0 + ((y1 - y0) * i) / 4);
   const byMonth = dates.filter((d, i) => i === 0 || d.slice(0, 7) !== dates[i - 1].slice(0, 7));
   const short = byMonth.length < 3; // short periods: a few day labels instead of months
-  const monthTicks = short ? dates.filter((_, i) => i % Math.max(1, Math.ceil(dates.length / 5)) === 0) : byMonth;
+  const raw = short ? dates.filter((_, i) => i % Math.max(1, Math.ceil(dates.length / 5)) === 0) : byMonth;
+  // never more labels than fit: thin them out on long periods (e.g. every 3 months over two years)
+  const maxTicks = narrow ? 4 : 7;
+  const step = Math.max(1, Math.ceil(raw.length / maxTicks));
+  const monthTicks = raw.filter((_, i) => i % step === 0);
   const hx = hover !== null ? dates[hover] : null;
 
   return (
@@ -57,7 +61,9 @@ export function LineChart({ series, yFormat, title, markers = [] }: { series: Se
         {markers.filter((m) => m.x > dates[0] && m.x <= dates[dates.length - 1]).map((m) => (
           <g key={m.x}>
             <line x1={X(m.x)} x2={X(m.x)} y1={PT} y2={H - PB} stroke="#ffffff" strokeOpacity={0.55} strokeDasharray="5 5" />
-            <text x={X(m.x) + 6} y={PT + 12} fontSize="12" fill="#ffffff" fillOpacity={0.8}>{m.label}</text>
+            {X(m.x) > W - 190
+              ? <text x={X(m.x) - 6} y={PT + 12} fontSize="12" fill="#ffffff" fillOpacity={0.8} textAnchor="end">{m.label}</text>
+              : <text x={X(m.x) + 6} y={PT + 12} fontSize="12" fill="#ffffff" fillOpacity={0.8}>{m.label}</text>}
           </g>
         ))}
         {series.map((s) => (

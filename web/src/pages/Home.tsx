@@ -21,13 +21,15 @@ function Partners() {
       {PARTNERS.length === 0 ? (
         <div className="partners-soon">Announced soon</div>
       ) : (
-        <div className="partners-logos">
-          {PARTNERS.map((p) => {
+        <div className="partners-marquee">
+          <div className="partners-track">
+          {[0, 1, 2, 3].flatMap((copy) => PARTNERS.map((p) => ({ ...p, copy }))).map((p) => {
             const inner = <><span className="logo-tile"><img src={`${import.meta.env.BASE_URL}partners/${p.logo}`} alt={p.name} loading="lazy" /></span><span className="logo-name">{p.short}</span></>;
             return p.url
-              ? <a key={p.name} className="partner" href={p.url} target="_blank" rel="noreferrer" title={p.name}>{inner}</a>
-              : <span key={p.name} className="partner" title={p.name}>{inner}</span>;
+              ? <a key={`${p.copy}-${p.name}`} className="partner" href={p.url} target="_blank" rel="noreferrer" title={p.name} aria-hidden={p.copy > 0} tabIndex={p.copy > 0 ? -1 : undefined}>{inner}</a>
+              : <span key={`${p.copy}-${p.name}`} className="partner" title={p.name} aria-hidden={p.copy > 0}>{inner}</span>;
           })}
+          </div>
         </div>
       )}
     </div>
