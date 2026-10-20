@@ -102,7 +102,7 @@ export async function runOnce(
     const fetchStart = addDays(settings.start_date, -7);
 
     // before the download window opens (one week before the start) there is nothing to fetch
-    const tooEarly = fetchStart > todayIn();
+    const tooEarly = fetchStart > asOf;
     if (tooEarly && !opts.skipFetch) L(`before ${fetchStart}: no market data to download yet`);
     if (!opts.skipFetch && !tooEarly) {
       // symbols in play: any non-cancelled order + benchmark
