@@ -559,3 +559,13 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; accent-
   .sc-call { max-width: 200px; justify-self: end; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .sc-live i { animation: none; } .sc-call img { transition: none; } }
+
+/* "Contact the organiser": bottom left, level with the bottom edge of the sponsor card */
+.hero-copy { align-self: stretch; display: flex; flex-direction: column; }
+.contact-btn { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 9px; padding: 9px 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(6, 8, 12, 0.35); color: #d5dbe4; font-size: 13.5px; font-weight: 500; text-decoration: none; letter-spacing: 0.01em; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: border-color 0.15s, color 0.15s, background 0.15s; }
+.contact-btn svg { color: #8fb0ff; transition: color 0.15s; }
+.contact-btn span { opacity: 0.6; }
+.contact-btn:hover { border-color: rgba(255, 255, 255, 0.55); background: rgba(255, 255, 255, 0.06); color: #fff; }
+.contact-btn:hover svg { color: #fff; }
+@media (max-width: 960px) { .contact-btn { margin-top: 18px; } }
+.hero-main { align-content: start; }
