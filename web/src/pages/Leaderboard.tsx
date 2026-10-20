@@ -3,7 +3,8 @@ import { supabase } from "../lib/supabase";
 import { must, useLoad } from "../lib/data";
 import { dateTime, eur, pct, pctU, plain, signClass } from "../lib/format";
 import { Loading, Notice, Tabs } from "../components/ui";
-import { LineChart, PALETTE, type Series } from "../components/LineChart";
+import { PALETTE, type Series } from "../components/LineChart";
+import { PortfolioChart } from "../components/PortfolioChart";
 
 interface Row {
   team_id: string; name: string; competition: "A" | "B"; university: string | null; nav: number | null;
@@ -99,7 +100,7 @@ export default function Leaderboard() {
                   {open === r.team_id && (
                     <tr className="chart-row"><td colSpan={17}>
                       <div className="small muted" style={{ marginBottom: 8 }}>Portfolio value of {r.name} in euro compared with the MSCI World (both start at {eur(1_000_000, 0)})</div>
-                      <LineChart
+                      <PortfolioChart
                         title={`Portfolio value of ${r.name}`}
                         yFormat={(v) => eur(v, 0)}
                         series={[
@@ -120,7 +121,7 @@ export default function Leaderboard() {
           </p>
           <div className="card" style={{ marginTop: 20 }}>
             <h3>Performance since the start</h3>
-            <LineChart series={series} yFormat={(v) => pct(v, 1)} title="Total return of the top teams compared with the MSCI World" />
+            <PortfolioChart rebase series={series} yFormat={(v) => pct(v, 1)} title="Total return of the top teams compared with the MSCI World" />
           </div>
         </>
       )}

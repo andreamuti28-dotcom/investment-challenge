@@ -45,10 +45,11 @@ Deno.serve(async (req) => {
       // daily closes for the price chart of a stock (not dividend-adjusted, main currency unit)
       const symbol = String(body.symbol ?? "").trim().toUpperCase();
       if (!/^[A-Z0-9.\-^=]{1,20}$/.test(symbol)) return json({ error: "Invalid symbol" }, 400);
-      const min = new Date(Date.now() - 2 * 365 * 86400_000).toISOString().slice(0, 10);
-      const from = typeof body.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.from) && body.from > min
-        ? body.from
-        : new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
+      // up to five years of history; two years by default
+      const min = new Date(Date.now() - 5 * 366 * 86400_000).toISOString().slice(0, 10);
+      const from = typeof body.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.from)
+        ? (body.from < min ? min : body.from)
+        : new Date(Date.now() - 2 * 366 * 86400_000).toISOString().slice(0, 10);
       const c = await fetchChart(symbol, from);
       return json({ symbol, name: c.name, currency: c.currency, prices: c.prices });
     }

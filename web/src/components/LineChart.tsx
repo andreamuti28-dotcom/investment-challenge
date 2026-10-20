@@ -10,7 +10,9 @@ export interface Series {
 const narrow = typeof window !== "undefined" && window.innerWidth < 640;
 const W = narrow ? 420 : 900, H = narrow ? 300 : 320, PL = 56, PR = 12, PT = 16, PB = 36;
 
-export function LineChart({ series, yFormat, title }: { series: Series[]; yFormat: (v: number) => string; title: string }) {
+export interface Marker { x: string; label: string }
+
+export function LineChart({ series, yFormat, title, markers = [] }: { series: Series[]; yFormat: (v: number) => string; title: string; markers?: Marker[] }) {
   const [hover, setHover] = useState<number | null>(null);
   const all = series.flatMap((s) => s.points);
   const dates = useMemo(() => [...new Set(all.map((p) => p.x))].sort(), [series]);
@@ -49,6 +51,12 @@ export function LineChart({ series, yFormat, title }: { series: Series[]; yForma
           <text key={d} x={X(d)} y={H - 12} fontSize="12" fill="#8a94a3" textAnchor="middle">
             {new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", short ? { day: "numeric", month: "short" } : { month: "short", year: "2-digit" })}
           </text>
+        ))}
+        {markers.filter((m) => m.x > dates[0] && m.x <= dates[dates.length - 1]).map((m) => (
+          <g key={m.x}>
+            <line x1={X(m.x)} x2={X(m.x)} y1={PT} y2={H - PB} stroke="#ffffff" strokeOpacity={0.55} strokeDasharray="5 5" />
+            <text x={X(m.x) + 6} y={PT + 12} fontSize="12" fill="#ffffff" fillOpacity={0.8}>{m.label}</text>
+          </g>
         ))}
         {series.map((s) => (
           <polyline key={s.name} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={s.dashed ? "6 4" : undefined}

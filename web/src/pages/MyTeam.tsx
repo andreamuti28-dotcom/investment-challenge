@@ -4,8 +4,8 @@ import { useAuth } from "../lib/auth";
 import { loadCalendar, must, useLoad } from "../lib/data";
 import { date, dateTime, eur, num, pct, signClass } from "../lib/format";
 import { Loading, Notice, Stat, Tabs } from "../components/ui";
-import { LineChart } from "../components/LineChart";
 import { StockChart } from "../components/StockChart";
+import { PortfolioChart } from "../components/PortfolioChart";
 
 interface Position {
   id: number; symbol: string; currency: string; side: "long" | "short"; quantity: number; entry_date: string; entry_price: number;
@@ -147,7 +147,7 @@ function Portfolio({ d }: { d: any }) {
 
       <div className="card">
         <h3>Your portfolio value vs MSCI World</h3>
-        <LineChart
+        <PortfolioChart rebase
           title="Total return of the team compared with the MSCI World"
           yFormat={(v) => pct(v, 1)}
           series={[
