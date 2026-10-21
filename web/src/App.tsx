@@ -81,22 +81,23 @@ export default function App() {
       {!landing && (
         <header className="topbar">
           <div className="topbar-inner">
-            <NavLink to="/" className="brand"><span className="brand-mark" aria-hidden="true" />Investment Challenge <span className="yr">{ed.short}</span></NavLink>
+            <NavLink to="/" className="brand"><span className="brand-mark" aria-hidden="true" /><span className="bt">Investment Challenge</span> <span className="yr">{ed.short}</span></NavLink>
             <nav className="nav" aria-label="Main">
               <NavLink to="/" end>Home</NavLink>
               <NavLink to="/leaderboard">Leaderboard</NavLink>
               <NavLink to="/participants">Participants</NavLink>
-              {session && !isAdmin && <NavLink to="/play" end>Competitions</NavLink>}
               {session && !isAdmin && team && <NavLink to="/team">{team.competition === "C" ? "My portfolio" : "My team"}</NavLink>}
-              {session && !isAdmin && <NavLink to="/me">Profile</NavLink>}
               {isAdmin && <NavLink to="/admin">Admin</NavLink>}
+              {session && <NavLink to="/me">Profile</NavLink>}
             </nav>
             <div className="nav-right">
               {session ? (
                 <>
-                  {team
-                    ? <NavLink to="/play" className="comp-chip" title="Switch competition"><b>{team.competition}</b>{team.competition === "C" ? "Individual" : team.name}<span className="sw">switch</span></NavLink>
-                    : <span>{session.user.email}</span>}
+                  {isAdmin
+                    ? <span className="who" title={session.user.email}>Organiser</span>
+                    : team
+                      ? <NavLink to="/play" className="comp-chip" title={`Competition ${team.competition} · ${team.name} — click to switch`}><b>{team.competition}</b><span className="nm">{team.competition === "C" ? "Individual" : team.name}</span><span className="sw">switch</span></NavLink>
+                      : <NavLink to="/play" className="comp-chip" title="Choose your competition"><span className="nm">Choose competition</span></NavLink>}
                   <button className="secondary small" onClick={async () => { await supabase.auth.signOut(); nav("/"); }}>Sign out</button>
                 </>
               ) : (

@@ -8,7 +8,7 @@ import PersonActivity from "../components/PersonActivity";
 
 /** Personal area: profile (name, LinkedIn), Competition B team name vote, my stocks and moves. */
 export default function Profile() {
-  const { session, teams, refresh } = useAuth();
+  const { session, teams, refresh, isAdmin } = useAuth();
   const uid = session!.user.id;
   const prof = useLoad(async () => {
     const { data } = await supabase.from("profiles").select("first_name,last_name,linkedin_url").eq("user_id", uid).maybeSingle();
@@ -16,6 +16,18 @@ export default function Profile() {
   }, [uid]);
   const teamB = teams.find((t) => t.competition === "B") ?? null;
   const teamA = teams.find((t) => t.competition === "A") ?? null;
+  if (isAdmin) return (
+    <>
+      <div className="page-head">
+        <div className="eyebrow">Organiser</div>
+        <h1>{prof.data ? `${prof.data.first_name} ${prof.data.last_name}`.trim() || "My profile" : "My profile"}</h1>
+        <p className="muted small" style={{ marginTop: 8 }}>Your LinkedIn is used by the “Contact the organiser” button on the home page. Organisers do not appear in the list of participants.</p>
+      </div>
+      <div className="grid cols-2">
+        {prof.data ? <ProfileForm initial={prof.data} admin onSaved={() => { prof.reload(); refresh(); }} /> : <Loading />}
+      </div>
+    </>
+  );
   return (
     <>
       <div className="page-head">
@@ -37,7 +49,7 @@ export default function Profile() {
   );
 }
 
-export function ProfileForm({ initial, onSaved }: { initial: { first_name: string; last_name: string; linkedin_url: string | null }; onSaved: () => void }) {
+export function ProfileForm({ initial, onSaved, admin }: { initial: { first_name: string; last_name: string; linkedin_url: string | null }; onSaved: () => void; admin?: boolean }) {
   const [first, setFirst] = useState(initial.first_name);
   const [last, setLast] = useState(initial.last_name);
   const [li, setLi] = useState(initial.linkedin_url ?? "");
@@ -46,7 +58,7 @@ export function ProfileForm({ initial, onSaved }: { initial: { first_name: strin
   return (
     <div className="card">
       <h3>My profile</h3>
-      <p className="muted small">Your name, association and LinkedIn appear in the public list of participants.</p>
+      <p className="muted small">{admin ? "Your name and LinkedIn link, shown to everyone as the organiser's contact." : "Your name, association and LinkedIn appear in the public list of participants."}</p>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <form className="stack" onSubmit={async (e) => {
         e.preventDefault(); setBusy(true); setMsg(null);

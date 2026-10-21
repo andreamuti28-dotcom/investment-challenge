@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import { loadCalendar, useLoad } from "../lib/data";
 import { date, eur } from "../lib/format";
 import AuthPanel from "../components/AuthPanel";
+import { supabase } from "../lib/supabase";
 import { useEdition } from "../lib/edition";
 
 const SPONSOR_URL = "https://wefocusbuddy.com/a";
-const ORGANISER_URL = "https://www.linkedin.com/in/andrea-muti-24416b2a1";
+const ORGANISER_URL_FALLBACK = "https://www.linkedin.com/in/andrea-muti-24416b2a1";
 
 /** Logos of the participating associations: add { name, logo, url } entries (logo files in web/public/partners/). */
 const PARTNERS: { name: string; short: string; logo: string; url?: string }[] = [
@@ -71,6 +72,11 @@ function useReveal() {
 
 export default function Home() {
   const { data } = useLoad(loadCalendar);
+  const organiser = useLoad(async () => {
+    const { data } = await supabase.rpc("organiser_linkedin");
+    return (data as string | null) || ORGANISER_URL_FALLBACK;
+  }, []);
+  const ORGANISER_URL = organiser.data ?? ORGANISER_URL_FALLBACK;
   const ed = useEdition();
   const s = data?.settings as any;
   const start = date(s?.public_start_date ?? ed.publicStart ?? s?.start_date ?? "2026-12-01");

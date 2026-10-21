@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql", "20261021140000_organiser_linkedin.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -309,6 +309,10 @@ const p5 = await db.query(`select linkedin_url from profiles where user_id = '${
 ok("LinkedIn link normalised", (p5.rows[0] as any).linkedin_url === "https://linkedin.com/in/mario-rossi");
 await expectErr("only LinkedIn links", () => as("authenticated", U5, `select update_my_profile('Mario', 'Rossi', 'https://evil.example/x')`), /LinkedIn/);
 ok("team name follows the profile", ((await db.query(`select full_name from team_members where user_id = '${U5}' limit 1`)).rows[0] as any).full_name === "Mario Rossi");
+await as("authenticated", ADMIN, `select update_my_profile('Andrea', 'Muti', 'linkedin.com/in/organiser')`);
+const org = await as("anon", null, "select organiser_linkedin() u");
+ok("the organiser sets their LinkedIn, shown publicly", (org.rows[0] as any).u === "https://linkedin.com/in/organiser", JSON.stringify(org.rows));
+ok("organiser not in the participants list", !(await as("anon", null, "select user_id from participants_list()")).rows.some((r: any) => r.user_id === ADMIN));
 const parts = await as("anon", null, "select * from participants()");
 ok("participants are public, organisers excluded", parts.rows.length > 0 && !parts.rows.some((r: any) => r.user_id === ADMIN), String(parts.rows.length));
 const mv = await as("anon", null, `select status from participant_moves('${U7}')`);
