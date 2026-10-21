@@ -6,6 +6,7 @@ import { Loading, Notice, RowDetail, Tabs } from "../components/ui";
 import { PALETTE, type Series } from "../components/LineChart";
 import { PortfolioChart } from "../components/PortfolioChart";
 import { TeamHoldings } from "../components/TeamHoldings";
+import { PracticeBanner } from "../components/PracticeBanner";
 
 interface Row {
   team_id: string; name: string; competition: "A" | "B"; university: string | null; nav: number | null;
@@ -88,6 +89,7 @@ export default function Leaderboard() {
         </div>
         <p className="muted small">Last update: {data.run ? dateTime(data.run.finished_at) : "not yet calculated"}{data.run?.as_of ? ` · prices as of ${data.run.as_of}` : ""}</p>
       </div>
+      <PracticeBanner />
       <Tabs value={comp} onChange={setComp} items={[["A", "Competition A · Association teams"], ["B", "Competition B · International teams"]]} />
       {rows.length === 0 ? (
         <p className="muted">No teams registered in this competition yet.</p>

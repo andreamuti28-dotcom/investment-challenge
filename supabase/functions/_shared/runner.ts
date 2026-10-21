@@ -1,7 +1,7 @@
 // Orchestrates one engine run: read inputs, refresh market data, replay, write results,
 // notify. Talks to Supabase through PostgREST RPCs with plain fetch, so the same file
 // runs inside the Edge Function (Deno) and in the GitHub Actions fallback (Node).
-import { type EngineInput, type EngineOutput, addDays, generateMonths, runEngine } from "./core.ts";
+import { type EngineInput, type EngineOutput, addDays, generateMonths, runChallenge } from "./core.ts";
 import { fetchChart, fetchEcb } from "./marketdata.ts";
 
 export interface RunnerEnv {
@@ -37,6 +37,7 @@ export function toEngineInput(db: any): EngineInput {
       benchmarkCurrency: s.benchmark_currency,
       startDate: s.start_date,
       endDate: s.end_date,
+      practiceStartDate: s.practice_start_date ?? null,
     },
     // the calendar follows the start and end dates set in the admin panel
     months: generateMonths(s.start_date, s.end_date),
@@ -103,7 +104,9 @@ export async function runOnce(
   try {
     let db = await rpc<any>(env, "engine_input");
     const settings = db.settings;
-    const fetchStart = addDays(settings.start_date, -7);
+    // market data is needed from the first day orders can be executed (practice or start)
+    const firstDay = settings.practice_start_date && settings.practice_start_date < settings.start_date ? settings.practice_start_date : settings.start_date;
+    const fetchStart = addDays(firstDay, -7);
 
     // before the download window opens (one week before the start) there is nothing to fetch
     const tooEarly = fetchStart > asOf;
@@ -140,10 +143,10 @@ export async function runOnce(
       for (const i of db.instruments) ccys.add(i.currency);
       ccys.delete("EUR");
       const lastEcb = Object.values(db.last_ecb ?? {}) as string[];
-      const ecbFrom = lastEcb.length ? addDays(lastEcb.sort()[0], -10) : addDays(settings.start_date, -14);
+      const ecbFrom = lastEcb.length ? addDays(lastEcb.sort()[0], -10) : addDays(firstDay, -14);
       let fx: unknown[] = [];
       try {
-        const r = await fetchEcb([...ccys], ecbFrom < addDays(settings.start_date, -14) ? addDays(settings.start_date, -14) : ecbFrom);
+        const r = await fetchEcb([...ccys], ecbFrom < addDays(firstDay, -14) ? addDays(firstDay, -14) : ecbFrom);
         fx = r.rates.map((x) => [x.currency, x.date, x.rate]);
         for (const m of r.missing) warnings.push(`ECB does not publish ${m}: insert manual rates (Art. 14)`);
         L(`ECB: ${fx.length} rates for ${[...ccys].join(", ") || "-"}`);
@@ -157,7 +160,7 @@ export async function runOnce(
 
     const input = toEngineInput(db);
     if (asOf > input.settings.endDate) asOf = input.settings.endDate;
-    const out: EngineOutput = runEngine(input, asOf);
+    const out: EngineOutput = runChallenge(input, asOf);
     warnings.push(...out.warnings);
     const executed = out.orderUpdates.filter((o) => o.status === "executed").length;
     const stops = out.positions.filter((p) => p.exitReason === "stop").length;

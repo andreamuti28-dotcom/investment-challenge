@@ -537,6 +537,7 @@ function SettingsTab() {
           <div><label htmlFor="s4">Benchmark symbol</label><input id="s4" value={cur.benchmark_symbol} onChange={(e) => set("benchmark_symbol", e.target.value)} /></div>
           <div><label htmlFor="s5">Benchmark currency (of its listing: SWDA.L is in GBP)</label><input id="s5" value={cur.benchmark_currency} onChange={(e) => set("benchmark_currency", e.target.value.toUpperCase())} /></div>
           <div><label htmlFor="s6">Start date</label><input id="s6" type="date" value={cur.start_date} onChange={(e) => set("start_date", e.target.value)} /></div>
+          <div><label htmlFor="s11">Practice from</label><input id="s11" type="date" value={cur.practice_start_date ?? ""} onChange={(e) => set("practice_start_date", e.target.value || null)} /><p className="small muted" style={{ margin: "4px 0 0" }}>Optional. From this date orders are executed at the daily close as a warm-up; on the start date open positions are carried over at that day's close and every team restarts from the capital.</p></div>
           <div><label htmlFor="s7">End date</label><input id="s7" type="date" value={cur.end_date} onChange={(e) => set("end_date", e.target.value)} /></div>
           <div><label htmlFor="s9">Edition (starting year)</label><input id="s9" type="number" min={2000} max={2100} value={cur.edition_year ?? 2026} onChange={(e) => set("edition_year", e.target.value)} /><p className="small muted" style={{ margin: "4px 0 0" }}>Shown everywhere as {(() => { const y = Number(cur.edition_year) || 2026; return `${String(y % 100).padStart(2, "0")}/${String((y + 1) % 100).padStart(2, "0")}`; })()}</p></div>
           <div><label htmlFor="s10">Start date shown on the website</label><input id="s10" type="date" value={cur.public_start_date ?? ""} onChange={(e) => set("public_start_date", e.target.value || null)} /><p className="small muted" style={{ margin: "4px 0 0" }}>Key dates on the home page. The start date above drives the calculations.</p></div>
@@ -547,7 +548,7 @@ function SettingsTab() {
           const { error } = await supabase.from("challenge_settings").update({
             capital: Number(cur.capital), risk_free_annual: Number(cur.risk_free_annual), stop_threshold: Number(cur.stop_threshold),
             benchmark_symbol: cur.benchmark_symbol, benchmark_currency: cur.benchmark_currency, start_date: cur.start_date, end_date: cur.end_date,
-            regulation_url: cur.regulation_url, edition_year: Number(cur.edition_year) || 2026, public_start_date: cur.public_start_date || null,
+            regulation_url: cur.regulation_url, edition_year: Number(cur.edition_year) || 2026, public_start_date: cur.public_start_date || null, practice_start_date: cur.practice_start_date || null,
             registration_deadline: cur.registration_deadline, updated_at: new Date().toISOString(),
           }).eq("id", 1);
           if (error) { setMsg({ kind: "err", text: errText(error) }); return; }

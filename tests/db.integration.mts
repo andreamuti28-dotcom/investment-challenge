@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -40,6 +40,8 @@ await db.exec(`
   insert into public.instruments (symbol,name,currency,exchange_tz,close_time) values
     ('AAPL','Apple','USD','America/New_York','16:00'),('ENI.MI','Eni','EUR','Europe/Rome','17:30'),('XYZ.MI','XYZ','EUR',null,null);
   insert into public.instruments (symbol,name,currency,quote_type) values ('SPY','SPDR','USD','ETF');
+  update public.instruments set last_price = case symbol when 'AAPL' then 200 when 'ENI.MI' then 10 when 'XYZ.MI' then 5 else 1 end;
+  insert into public.fx_rates values ('USD','2020-01-01',1.1,'manual');
 `);
 await db.query(`select link_team_user($1,$2)`, [U1, "10000000-0000-0000-0000-000000000001"]);
 await db.query(`select link_team_user($1,$2)`, [U2, "10000000-0000-0000-0000-000000000002"]);
@@ -324,4 +326,37 @@ ok("names must be identical", (vDiff.rows[0] as any).j.renamed === false);
 const vOk = await as("authenticated", BUS[BUS.length - 1], `select propose_team_name('${BT}', 'The Bulls') j`);
 ok("unanimous name applied", (vOk.rows[0] as any).j.renamed === true && ((await db.query(`select name from teams where id = '${BT}'`)).rows[0] as any).name === "The Bulls", JSON.stringify(vOk.rows[0]));
 await expectErr("A teams are not renamed by vote", () => as("authenticated", U5, `select propose_team_name('${A1}', 'X Y')`), /Only members of a Competition B team/);
+// budget per member and no leverage
+const A3 = "10000000-0000-0000-0000-0000000000b3";
+const UA = "00000000-0000-0000-0000-0000000000aa", UB = "00000000-0000-0000-0000-0000000000bb", UC = "00000000-0000-0000-0000-0000000000cc";
+await db.exec(`insert into public.teams (id,name,competition,university) values ('${A3}','Budget','A','X');
+  insert into auth.users values ('${UA}','a@b','{"full_name":"A"}'),('${UB}','b@b','{"full_name":"B"}'),('${UC}','c@b','{"full_name":"C"}');
+  insert into public.instruments (symbol,name,currency,last_price) values ('BUD1.MI','B1','EUR',10),('BUD2','B2','USD',200),('BUD3.MI','B3','EUR',5);
+  insert into public.fx_rates values ('USD','2099-01-01',1.1,'manual');`);
+for (const u of [UA, UB]) await as("authenticated", ADMIN, `select set_membership_admin('${u}', '${A3}', 'member')`);
+const b0 = await as("authenticated", UA, `select my_budget('${A3}') j`);
+ok("budget = team value / members", Number((b0.rows[0] as any).j.limit) === 500000, JSON.stringify(b0.rows[0]));
+await as("authenticated", UA, `select place_order_in('${A3}','BUD1.MI','open','long',40000)`);
+await expectErr("member over budget", () => as("authenticated", UA, `select place_order_in('${A3}','BUD2','open','long',1000)`), /Over budget: with this order you would have/);
+await as("authenticated", UA, `select place_order_in('${A3}','BUD1.MI','open','long',45000)`);
+ok("replacing a pending order within budget", true);
+await as("authenticated", UB, `select place_order_in('${A3}','BUD2','open','short',2700)`);
+await expectErr("shorts count as invested", () => as("authenticated", UB, `select place_order_in('${A3}','BUD3.MI','open','long',2000)`), /Over budget/);
+await as("authenticated", ADMIN, `select set_membership_admin('${UC}', '${A3}', 'member')`);
+await as("authenticated", UC, `select place_order_in('${A3}','BUD3.MI','open','long',10000)`);
+await expectErr("team cannot invest more than its value", () => as("authenticated", UC, `select place_order_in('${A3}','BUD3.MI','open','long',20000)`), /the team would have/);
+await as("authenticated", UA, `select place_order_in('${A3}','BUD1.MI','open','long',44000)`);
+ok("reducing is allowed above the new budget", true);
+await expectErr("increasing above the budget is not", () => as("authenticated", UA, `select place_order_in('${A3}','BUD1.MI','open','long',46000)`), /Over budget/);
+const b1 = await as("authenticated", UA, `select my_budget('${A3}') j`);
+ok("budget shrinks when members join", Math.abs(Number((b1.rows[0] as any).j.limit) - 333333.33) < 0.01 && Number((b1.rows[0] as any).j.used) === 440000, JSON.stringify(b1.rows[0]));
+await as("authenticated", ADMIN, `select place_order_admin('${A3}','BUD2','close',null,null)`).catch(() => {});
+ok("organiser is not subject to the budget", (await as("authenticated", ADMIN, `select (place_order_admin('${A3}','SPY','open','long',1)).id`).catch((e) => ({ rows: [{ err: String(e) }] }))).rows.length === 1);
+// practice period: orders executed from the practice start instead of the official start
+await db.exec(`update challenge_settings set start_date = '2026-12-01', practice_start_date = null where id = 1`);
+const t0 = await db.query(`select exec_date::text d from next_close('2026-10-21 10:00+02', 'Europe/Rome', '17:30')`);
+ok("without practice, orders wait for the start", (t0.rows[0] as any).d === "2026-12-01", JSON.stringify(t0.rows));
+await db.exec(`update challenge_settings set practice_start_date = '2026-10-21' where id = 1`);
+const t1 = await db.query(`select exec_date::text d from next_close('2026-10-21 10:00+02', 'Europe/Rome', '17:30')`);
+ok("with practice, orders execute at that day's close", (t1.rows[0] as any).d === "2026-10-21", JSON.stringify(t1.rows));
 console.log(fails ? `\n${fails} FAILED` : "\nALL DB TESTS PASSED");

@@ -9,6 +9,7 @@ import { date, dateTime, eur, num, pct, signClass } from "../lib/format";
 import { Loading, Notice, RowDetail, Stat, Tabs } from "../components/ui";
 import { StockChart } from "../components/StockChart";
 import { PortfolioChart } from "../components/PortfolioChart";
+import { PracticeBanner } from "../components/PracticeBanner";
 
 interface Position {
   id: number; symbol: string; currency: string; side: "long" | "short"; quantity: number; entry_date: string; entry_price: number;
@@ -83,6 +84,7 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
         <h1>{team.name}</h1>
         {adminView && <p className="muted small" style={{ marginTop: 8 }}>You are acting for this team: orders you place here are recorded in its name. <Link to="/admin">Back to the admin panel</Link></p>}
       </div>
+      <PracticeBanner />
       <Tabs value={tab} onChange={setTab} items={adminView
         ? [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"]]
         : [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"], ["account", "Account"]]} />
@@ -203,6 +205,12 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     const { data } = await supabase.rpc("my_stock_usage", { p_team: d.teamId });
     return data as { used: number; limit: number } | null;
   }, [d.teamId, d.orders.length]);
+  // euro invested by this member (long + short) against their share of the team value
+  const budget = useLoad(async () => {
+    if (d.adminView) return null;
+    const { data } = await supabase.rpc("my_budget", { p_team: d.teamId });
+    return data as { used: number; limit: number; nav: number; members: number; teamUsed: number } | null;
+  }, [d.teamId, d.orders.length]);
 
   // holdings now, plus the effect of pending orders in the order they were placed
   const held = useMemo(() => {
@@ -267,6 +275,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     });
     setSel(null); setQty(""); setQuery(""); setTiming(null);
     usage.reload();
+    budget.reload();
     await reload();
   }
   async function cancel(fn: "cancel_order", id: string) {
@@ -301,6 +310,19 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
               <span className="muted small">{usage.data.used >= usage.data.limit ? "limit reached: close one to open a new stock" : "different stocks you can hold"}</span>
             </div>
           )}
+          {budget.data && (() => {
+            const b = budget.data!, used = Number(b.used), limit = Number(b.limit), share = limit > 0 ? Math.min(1, used / limit) : 1;
+            return (
+              <div className={`budget-meter ${used > limit ? "full" : ""}`}>
+                <div className="bm-head">
+                  <span>Your budget</span>
+                  <b>{eur(used)} / {eur(limit)}</b>
+                  <span className="muted small">invested (long + short) · team value {eur(Number(b.nav))} ÷ {b.members} {b.members === 1 ? "member" : "members"}</span>
+                </div>
+                <div className="bm-bar" aria-hidden="true"><i style={{ width: `${(share * 100).toFixed(1)}%` }} /></div>
+              </div>
+            );
+          })()}
           <form className="row" onSubmit={(e) => { e.preventDefault(); search(); }}>
             <div className="field"><label htmlFor="q">Search a listed stock (name or ticker)</label><input id="q" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. Eni, ASML, 7203.T" /></div>
             <button type="submit" disabled={busy} style={{ alignSelf: "flex-end" }}>Search</button>
@@ -370,7 +392,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                 </div>
               )}
               {indicative !== null && action !== "close" && (
-                <p className="small muted">Indicative value: {ccy === "EUR" ? eur(indicative) : <>{num(indicative)} {ccy}{fx ? ` ≈ ${eur(indicative / fx)}` : ""}</>} (final price: the close of the execution day).</p>
+                <p className="small muted">Indicative value: {ccy === "EUR" ? eur(indicative) : <>{num(indicative)} {ccy}{fx ? ` ≈ ${eur(indicative / fx)}` : ""}</>} (final price: the close of the execution day).{budget.data ? ` Budget still free before this order: ${eur(Math.max(0, Number(budget.data.limit) - Number(budget.data.used)))}.` : ""}</p>
               )}
               <div className="row">
                 <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>{describe(action, side, qty ? num(Number(qty), 0) : "…", sel.symbol, held.get(sel.symbol)?.side)}</button>

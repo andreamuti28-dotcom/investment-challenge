@@ -17,6 +17,9 @@ export interface Settings {
   benchmarkCurrency: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;
+  /** optional warm-up before the start: orders execute from this date, and the positions still
+   *  open on the eve of the start are carried into the challenge at the start's closing prices */
+  practiceStartDate?: string | null;
 }
 export interface Month {
   n: number;
@@ -731,4 +734,65 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
     }
   }
   return out;
+}
+
+// ------------------------------------------------------------------ practice period
+/** Runs the challenge with an optional practice period before the official start.
+ *  - Before the start: the practice is replayed from practiceStartDate with the full capital.
+ *  - From the start: the practice is replayed up to the eve of the start; every position still
+ *    open is re-entered (same side and quantity) at the start's closing price, on a fresh
+ *    capital, and the practice results are discarded. The carried position keeps the id of the
+ *    order that opened it, so it stays attributed to the member who opened it. Practice orders
+ *    keep their own execution date and price in the history. */
+export function runChallenge(input: EngineInput, asOfRequested: string): EngineOutput {
+  const S = input.settings;
+  const ps = S.practiceStartDate;
+  if (!ps || ps >= S.startDate) return runEngine(input, asOfRequested);
+  const eve = addDays(S.startDate, -1);
+  const monthStart = new Map(input.months.map((m) => [m.n, m.startDate]));
+  const execOf = (o: Order) => o.execDate ?? monthStart.get(o.monthN) ?? S.startDate;
+  const practiceOrders = input.orders.filter((o) => execOf(o) < S.startDate);
+  const officialOrders = input.orders.filter((o) => execOf(o) >= S.startDate);
+  const practiceInput: EngineInput = {
+    ...input,
+    settings: { ...S, startDate: ps, endDate: eve, practiceStartDate: null },
+    months: generateMonths(ps, eve),
+    orders: practiceOrders,
+    transfers: [],
+  };
+  if (asOfRequested < S.startDate) return runEngine(practiceInput, asOfRequested);
+
+  const practice = runEngine(practiceInput, eve);
+  const carried: Order[] = practice.positions
+    .filter((p) => p.exitDate === null)
+    .map((p) => ({
+      id: p.orderId,
+      teamId: p.teamId,
+      monthN: 1,
+      symbol: p.symbol,
+      action: "open" as const,
+      side: p.side,
+      quantity: p.quantity,
+      createdAt: "0000-01-01T00:00:00Z", // before any real order of the start day
+      execDate: S.startDate,
+    }));
+  const carriedIds = new Set(carried.map((c) => c.id));
+  const official = runEngine({ ...input, settings: { ...S, practiceStartDate: null }, orders: [...carried, ...officialOrders] }, asOfRequested);
+
+  // carried opens are not trades: remove them from the operations count and from the order history
+  const carriedExecuted = new Map<string, number>();
+  for (const u of official.orderUpdates) {
+    if (carriedIds.has(u.id) && u.status === "executed") {
+      const team = carried.find((c) => c.id === u.id)!.teamId;
+      carriedExecuted.set(team, (carriedExecuted.get(team) ?? 0) + 1);
+    }
+  }
+  for (const m of official.metrics) m.operations = Math.max(0, m.operations - (carriedExecuted.get(m.teamId) ?? 0));
+  official.orderUpdates = [
+    ...official.orderUpdates.filter((u) => !carriedIds.has(u.id)),
+    ...practice.orderUpdates.map((u) =>
+      u.status === "pending" ? { ...u, status: "rejected" as const, rejectReason: "not executed before the start of the challenge" } : u
+    ),
+  ];
+  return official;
 }

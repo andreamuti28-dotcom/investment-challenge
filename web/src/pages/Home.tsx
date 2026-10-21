@@ -138,7 +138,9 @@ export default function Home() {
         </div>
         <ol className="dates reveal">
           <li><div className="when">{s ? date(s.registration_deadline) : "15 Nov 2026"}</div><h3>Registration</h3><p>Associations confirm their teams and presidents.</p></li>
-          <li><div className="when">Before the start</div><h3>Initial portfolio</h3><p>Teams place their first orders.</p></li>
+          {ed.practiceStart
+            ? <li><div className="when">From {date(ed.practiceStart)}</div><h3>Practice</h3><p>Orders run at the daily close. Open positions are carried into the start.</p></li>
+            : <li><div className="when">Before the start</div><h3>Initial portfolio</h3><p>Teams place their first orders.</p></li>}
           <li><div className="when">{start}</div><h3>The bell rings</h3><p>Initial portfolios executed at the closing price.</p></li>
           <li><div className="when">{end}</div><h3>Final valuation</h3><p>Results in euro at the ECB reference rate.</p></li>
         </ol>

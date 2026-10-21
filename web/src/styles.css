@@ -638,6 +638,13 @@ input.name-edit:hover, input.name-edit:focus { border-color: var(--line-2); back
 .stock-quota .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-2); }
 .stock-quota .dots i.on { background: var(--accent); }
 .stock-quota.full { border-color: rgba(245, 196, 81, 0.5); }
+.budget-meter { padding: 10px 12px; margin: -6px 0 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); font-size: 13px; }
+.budget-meter .bm-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.budget-meter .bm-bar { height: 6px; border-radius: 3px; background: var(--line-2); margin-top: 8px; overflow: hidden; }
+.budget-meter .bm-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.budget-meter.full { border-color: rgba(245, 196, 81, 0.5); }
+.budget-meter.full .bm-bar i { background: #f5c451; }
+.practice-banner { margin: 0 0 18px; }
 .stock-quota.full .dots i.on { background: var(--warn); }
 #sl { min-width: 190px; }
 

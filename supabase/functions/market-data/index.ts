@@ -59,9 +59,28 @@ Deno.serve(async (req) => {
           // used to execute orders at the close of the right trading day
           ...(v.timezone ? { exchange_tz: v.timezone } : {}),
           ...(v.closeTime ? { close_time: v.closeTime } : {}),
+          // latest price, used to check the member's budget before the first close is stored
+          ...(typeof v.lastPrice === "number" ? { last_price: v.lastPrice, last_price_at: new Date().toISOString() } : {}),
         }),
       });
       if (!r.ok) return json({ error: `Could not save instrument: ${await r.text()}` }, 500);
+      // a currency never seen before: fetch its ECB rate now, so the order can be valued
+      if (v.currency.toUpperCase() !== "EUR") {
+        const H = serviceHeaders(e.serviceKey);
+        const have = await fetch(`${e.supabaseUrl}/rest/v1/fx_rates?currency=eq.${encodeURIComponent(v.currency.toUpperCase())}&select=date&limit=1`, { headers: H });
+        if (have.ok && ((await have.json()) as unknown[]).length === 0) {
+          try {
+            const fx = await fetchEcb([v.currency], new Date(Date.now() - 14 * 86400_000).toISOString().slice(0, 10));
+            if (fx.rates.length) {
+              await fetch(`${e.supabaseUrl}/rest/v1/rpc/upsert_market_data`, {
+                method: "POST",
+                headers: H,
+                body: JSON.stringify({ p: { prices: [], events: [], fx: fx.rates.map((x) => [x.currency, x.date, x.rate]) } }),
+              });
+            }
+          } catch { /* the nightly run fetches it anyway */ }
+        }
+      }
       return json({ instrument: (await r.json())[0], lastPrice: v.lastPrice });
     }
     if (body.action === "history") {
