@@ -37,7 +37,7 @@ export default function Profile() {
   );
 }
 
-function ProfileForm({ initial, onSaved }: { initial: { first_name: string; last_name: string; linkedin_url: string | null }; onSaved: () => void }) {
+export function ProfileForm({ initial, onSaved }: { initial: { first_name: string; last_name: string; linkedin_url: string | null }; onSaved: () => void }) {
   const [first, setFirst] = useState(initial.first_name);
   const [last, setLast] = useState(initial.last_name);
   const [li, setLi] = useState(initial.linkedin_url ?? "");

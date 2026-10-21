@@ -158,6 +158,8 @@ export async function validateSymbol(symbol: string) {
     priceDivisor: c.divisor,
     quoteType: c.instrumentType,
     lastPrice: c.lastPrice,
+    /** last completed session: the reference price shown before an order */
+    lastClose: c.prices.at(-1) ?? null,
     timezone: c.timezone,
     closeTime: c.closeTime,
   };

@@ -645,6 +645,11 @@ input.name-edit:hover, input.name-edit:focus { border-color: var(--line-2); back
 .budget-meter.full { border-color: rgba(245, 196, 81, 0.5); }
 .budget-meter.full .bm-bar i { background: #f5c451; }
 .practice-banner { margin: 0 0 18px; }
+.price-ref { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); font-size: 14px; }
+.cost-box { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid rgba(123, 156, 255, 0.45); border-radius: var(--radius-lg); background: rgba(123, 156, 255, 0.08); }
+.cost-box .cost-main { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.cost-box .cost-main b { font-size: 22px; letter-spacing: -0.01em; }
+.cost-box .neg { color: var(--neg, #ff6b6b); }
 .stock-quota.full .dots i.on { background: var(--warn); }
 #sl { min-width: 190px; }
 

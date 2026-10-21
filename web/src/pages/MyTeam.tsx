@@ -10,6 +10,8 @@ import { Loading, Notice, RowDetail, Stat, Tabs } from "../components/ui";
 import { StockChart } from "../components/StockChart";
 import { PortfolioChart } from "../components/PortfolioChart";
 import { PracticeBanner } from "../components/PracticeBanner";
+import { LinkedIn } from "../components/LinkedIn";
+import { ProfileForm } from "./Profile";
 
 interface Position {
   id: number; symbol: string; currency: string; side: "long" | "short"; quantity: number; entry_date: string; entry_price: number;
@@ -44,7 +46,7 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
       must(supabase.from("nav_daily").select("date,nav_eur").eq("team_id", team!.id).order("date")),
       must(supabase.from("benchmark_daily").select("date,value_eur").order("date")),
       supabase.from("leaderboard").select("*").eq("team_id", team!.id).maybeSingle(),
-      must(supabase.from("instruments").select("symbol,name,exchange,currency")),
+      must(supabase.from("instruments").select("symbol,name,exchange,currency,last_price,last_price_at")),
       must(supabase.from("fx_rates").select("currency,date,rate").order("date", { ascending: false }).limit(400)),
     ]);
     const fxLatest: Record<string, number> = { EUR: 1 };
@@ -192,7 +194,7 @@ function describe(action: string, side: string, qty: string | number, symbol: st
 function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[] | null>(null);
-  const [sel, setSel] = useState<{ symbol: string; name: string; exchange: string; currency: string; lastPrice: number | null } | null>(null);
+  const [sel, setSel] = useState<{ symbol: string; name: string; exchange: string; currency: string; lastPrice: number | null; closeDate: string | null; fx: number | null } | null>(null);
   const [timing, setTiming] = useState<{ exec_date: string; cutoff_at: string } | null>(null);
   const [action, setAction] = useState<"open" | "change" | "close">("open");
   const [side, setSide] = useState<"long" | "short">("long");
@@ -242,7 +244,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     setBusy(true); setMsg(null);
     try {
       const r = await callFunction("market-data", { action: "validate", symbol });
-      setSel({ symbol: r.instrument.symbol, name: r.instrument.name, exchange: r.instrument.exchange, currency: r.instrument.currency, lastPrice: r.lastPrice });
+      setSel({ symbol: r.instrument.symbol, name: r.instrument.name, exchange: r.instrument.exchange, currency: r.instrument.currency, lastPrice: r.lastClose?.close ?? r.lastPrice ?? null, closeDate: r.lastClose?.date ?? null, fx: r.fxRate ?? d.fxLatest[r.instrument.currency] ?? null });
       const h = held.get(r.instrument.symbol);
       setAction(h ? "change" : "open");
       if (h) { setSide(h.side as any); setQty(String(h.quantity)); } else setQty("");
@@ -254,7 +256,9 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   function prefill(symbol: string, a: "change" | "close") {
     const i = d.instruments[symbol];
     const h = held.get(symbol)!;
-    setSel({ symbol, name: i?.name ?? symbol, exchange: i?.exchange ?? "", currency: i?.currency ?? "", lastPrice: null });
+    const pos = (d.positions as Position[]).find((p) => p.symbol === symbol && !p.exit_date);
+    const lp = pos?.last_price != null ? Number(pos.last_price) : (i as any)?.last_price != null ? Number((i as any).last_price) : null;
+    setSel({ symbol, name: i?.name ?? symbol, exchange: i?.exchange ?? "", currency: i?.currency ?? "", lastPrice: lp, closeDate: pos?.last_price != null ? d.metrics?.as_of ?? null : null, fx: d.fxLatest[i?.currency ?? ""] ?? null });
     setAction(a); setSide(h.side as any); setQty(String(h.quantity)); setMsg(null);
     loadTiming(symbol);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -287,7 +291,11 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   if (over) return <Notice kind="warn">The challenge has ended: orders are closed.</Notice>;
   const ccy = sel?.currency ?? "";
   const indicative = sel?.lastPrice && Number(qty) > 0 ? Number(qty) * sel.lastPrice : null;
-  const fx = d.fxLatest[ccy];
+  const fx = sel?.fx ?? d.fxLatest[ccy];
+  const indicativeEur = indicative !== null && fx ? indicative / fx : null;
+  // euro value of the position this order replaces (a change re-sizes it)
+  const curPos = sel ? (d.positions as Position[]).find((p) => p.symbol === sel.symbol && !p.exit_date) : undefined;
+  const curEur = curPos?.value_eur != null ? Math.abs(Number(curPos.value_eur)) : 0;
 
   return (
     <>
@@ -339,7 +347,14 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
           )}
           {sel && (
             <div className="stack" style={{ marginTop: 16 }}>
-              <div><b>{sel.symbol}</b> · {sel.name} <span className="muted small">{sel.exchange} · {sel.currency}{sel.lastPrice ? ` · last ${num(sel.lastPrice, 4)}` : ""}</span></div>
+              <div><b>{sel.symbol}</b> · {sel.name} <span className="muted small">{sel.exchange} · {sel.currency}</span></div>
+              {sel.lastPrice ? (
+                <div className="price-ref">
+                  <span className="muted small">Previous close{sel.closeDate ? ` (${date(sel.closeDate)})` : ""}</span>
+                  <b>{num(sel.lastPrice, sel.lastPrice < 10 ? 4 : 2)} {ccy}</b>
+                  {ccy !== "EUR" && fx ? <span>≈ <b>{eur(sel.lastPrice / fx)}</b> per share <span className="muted small">(ECB rate {num(fx, 4)} {ccy} per €)</span></span> : null}
+                </div>
+              ) : <p className="small muted" style={{ margin: 0 }}>Previous close not available yet: the cost is shown once the first close is stored.</p>}
               <StockChart symbol={sel.symbol} />
               {timing && (
                 <p className="small" style={{ margin: 0 }}>
@@ -392,7 +407,21 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                 </div>
               )}
               {indicative !== null && action !== "close" && (
-                <p className="small muted">Indicative value: {ccy === "EUR" ? eur(indicative) : <>{num(indicative)} {ccy}{fx ? ` ≈ ${eur(indicative / fx)}` : ""}</>} (final price: the close of the execution day).{budget.data ? ` Budget still free before this order: ${eur(Math.max(0, Number(budget.data.limit) - Number(budget.data.used)))}.` : ""}</p>
+                <div className="cost-box">
+                  <div className="cost-main">
+                    <span className="muted small">Estimated amount</span>
+                    <b>{indicativeEur !== null ? eur(indicativeEur) : `${num(indicative)} ${ccy}`}</b>
+                  </div>
+                  <div className="small muted">
+                    {num(Number(qty), 0)} shares × {num(sel.lastPrice!, sel.lastPrice! < 10 ? 4 : 2)} {ccy}{ccy !== "EUR" ? ` = ${num(indicative)} ${ccy}` : ""}, at the previous close.
+                    The order is executed at the close of {timing ? date(timing.exec_date) : "the execution day"}: the final amount depends on that price.
+                  </div>
+                  {budget.data && indicativeEur !== null && (() => {
+                    const after = Number(budget.data.used) - (action === "change" ? curEur : 0) + indicativeEur;
+                    const lim = Number(budget.data.limit);
+                    return <div className={`small ${after > lim ? "neg" : ""}`}>Your budget after this order: <b>{eur(after)}</b> of {eur(lim)}{after > lim ? " · over budget: the order will be refused" : ""}</div>;
+                  })()}
+                </div>
               )}
               <div className="row">
                 <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>{describe(action, side, qty ? num(Number(qty), 0) : "…", sel.symbol, held.get(sel.symbol)?.side)}</button>
@@ -406,10 +435,18 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
           <h3>Pending orders</h3>
           {pending.length === 0 ? <p className="muted">None. Positions you do not touch are kept as they are.</p> : (
             <div className="table-wrap"><table>
-              <thead><tr><th>Stock</th><th>Action</th><th>Side</th><th className="num">Quantity</th><th>Close of</th><th /></tr></thead>
+              <thead><tr><th>Stock</th><th>Action</th><th>Side</th><th className="num">Quantity</th><th className="num">≈ Amount (€)</th><th>Close of</th><th /></tr></thead>
               <tbody>{pending.map((o) => (
                 <tr key={o.id}><td>{o.symbol}</td><td>{o.action}</td><td>{o.side ? <span className={`badge ${o.side}`}>{o.side}</span> : "–"}</td>
                   <td className="num">{o.target_quantity ? num(o.target_quantity, 0) : "all"}</td>
+                  <td className="num">{(() => {
+                    const ins: any = d.instruments[o.symbol];
+                    const pos = (d.positions as Position[]).find((p) => p.symbol === o.symbol && !p.exit_date);
+                    const px = pos?.last_price != null ? Number(pos.last_price) : ins?.last_price != null ? Number(ins.last_price) : null;
+                    const r = d.fxLatest[ins?.currency ?? ""];
+                    if (o.action === "close") return pos?.value_eur != null ? eur(Math.abs(Number(pos.value_eur))) : "–";
+                    return px && r && o.target_quantity ? eur((Number(o.target_quantity) * px) / r) : "–";
+                  })()}</td>
                   <td>{date(o.exec_date)}</td>
                   <td>{editable(o.cutoff_at)
                     ? <button className="danger small" title={`Until ${dateTime(o.cutoff_at)}`} onClick={() => cancel("cancel_order", o.id)}>Cancel</button>
@@ -477,7 +514,7 @@ function TeamTab({ teamId, admin }: { teamId: string; admin: boolean }) {
   const q = useLoad(async () => {
     const { data, error } = admin ? await supabase.rpc("team_info_admin", { p_team: teamId }) : await supabase.rpc("team_info_for", { p_team: teamId });
     if (error) throw new Error(error.message);
-    return data as { role: string; code: string | null; members: { name: string; role: string; email: string | null; joined: string }[] } | null;
+    return data as { role: string; code: string | null; members: { name: string; role: string; email: string | null; linkedin: string | null; joined: string }[] } | null;
   });
   const [copied, setCopied] = useState(false);
   if (q.error) return <Notice kind="err">{q.error}</Notice>;
@@ -503,13 +540,13 @@ function TeamTab({ teamId, admin }: { teamId: string; admin: boolean }) {
       <div className="card">
         <h3>Members ({t.members.length})</h3>
         <div className="table-wrap"><table>
-          <thead><tr><th>Name</th><th>Role</th>{t.role !== "member" && <th>E-mail</th>}<th>Joined</th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th>{t.role !== "member" && <th>E-mail</th>}<th>LinkedIn</th><th>Joined</th></tr></thead>
           <tbody>{t.members.map((m, i) => (
             <tr key={i}><td>{m.name}</td><td><span className={`badge ${m.role === "president" ? "president" : ""}`}>{m.role}</span></td>
-              {t.role !== "member" && <td className="small">{m.email}</td>}<td className="small">{date(m.joined)}</td></tr>
+              {t.role !== "member" && <td className="small">{m.email}</td>}<td><LinkedIn url={m.linkedin} small /></td><td className="small">{date(m.joined)}</td></tr>
           ))}</tbody>
         </table></div>
-        <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. To remove a member, contact the organiser.</p>
+        <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. Add your LinkedIn link in the Account tab. To remove a member, contact the organiser.</p>
       </div>
       <StockLimit teamId={teamId} canEdit={admin || (t.role === "president")} competition={teams.find((x) => x.id === teamId)?.competition ?? null} />
       {!admin && !teams.some((x) => x.competition === "A") && (
@@ -552,11 +589,26 @@ function StockLimit({ teamId, canEdit, competition }: { teamId: string; canEdit:
 }
 
 function Account() {
+  const { session, refresh } = useAuth();
+  const uid = session?.user.id;
+  const prof = useLoad(async () => {
+    const { data } = await supabase.from("profiles").select("first_name,last_name,linkedin_url").eq("user_id", uid!).maybeSingle();
+    return (data ?? { first_name: "", last_name: "", linkedin_url: null }) as { first_name: string; last_name: string; linkedin_url: string | null };
+  }, [uid]);
+  return (
+    <div className="grid cols-2">
+      {prof.data ? <ProfileForm initial={prof.data} onSaved={() => { prof.reload(); refresh(); }} /> : <Loading />}
+      <PasswordCard />
+    </div>
+  );
+}
+
+function PasswordCard() {
   const [p1, setP1] = useState("");
   const [p2, setP2] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   return (
-    <div className="card" style={{ maxWidth: 480 }}>
+    <div className="card">
       <h3>Change password</h3>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
       <form className="stack" onSubmit={async (e) => {

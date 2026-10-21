@@ -59,8 +59,9 @@ Deno.serve(async (req) => {
           // used to execute orders at the close of the right trading day
           ...(v.timezone ? { exchange_tz: v.timezone } : {}),
           ...(v.closeTime ? { close_time: v.closeTime } : {}),
-          // latest price, used to check the member's budget before the first close is stored
-          ...(typeof v.lastPrice === "number" ? { last_price: v.lastPrice, last_price_at: new Date().toISOString() } : {}),
+          // previous close (or the live price), used for the indicative cost and the budget check
+          ...(v.lastClose || typeof v.lastPrice === "number"
+            ? { last_price: v.lastClose?.close ?? v.lastPrice, last_price_at: new Date().toISOString() } : {}),
         }),
       });
       if (!r.ok) return json({ error: `Could not save instrument: ${await r.text()}` }, 500);
@@ -81,7 +82,13 @@ Deno.serve(async (req) => {
           } catch { /* the nightly run fetches it anyway */ }
         }
       }
-      return json({ instrument: (await r.json())[0], lastPrice: v.lastPrice });
+      let fxRate: number | null = v.currency.toUpperCase() === "EUR" ? 1 : null;
+      if (fxRate === null) {
+        const q = await fetch(`${e.supabaseUrl}/rest/v1/fx_rates?currency=eq.${encodeURIComponent(v.currency.toUpperCase())}&select=rate,date&order=date.desc&limit=1`, { headers: serviceHeaders(e.serviceKey) });
+        const rows = q.ok ? ((await q.json()) as { rate: number; date: string }[]) : [];
+        fxRate = rows[0] ? Number(rows[0].rate) : null;
+      }
+      return json({ instrument: (await r.json())[0], lastPrice: v.lastPrice, lastClose: v.lastClose, fxRate });
     }
     if (body.action === "history") {
       // daily closes for the price chart of a stock (not dividend-adjusted, main currency unit)
