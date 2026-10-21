@@ -9,14 +9,14 @@ import { TeamHoldings } from "../components/TeamHoldings";
 import { PracticeBanner } from "../components/PracticeBanner";
 
 interface Row {
-  team_id: string; name: string; competition: "A" | "B"; university: string | null; nav: number | null;
+  team_id: string; name: string; competition: "A" | "B" | "C"; university: string | null; nav: number | null;
   total_return: number | null; rank_in_competition: number | null; excess_return: number | null; benchmark_return: number | null;
   volatility: number | null; sharpe: number | null; sortino: number | null; beta: number | null; tracking_error: number | null;
   max_drawdown: number | null; calmar: number | null; operations: number | null; max_weight: number | null; hhi: number | null;
-  violations: number | null; months_completed: number | null; as_of: string | null;
+  violations: number | null; months_completed: number | null; as_of: string | null; invested_share: number | null;
 }
 
-type SortKey = "nav" | "total_return" | "excess_return" | "volatility" | "sharpe" | "sortino" | "beta" | "max_drawdown" | "calmar" | "operations" | "max_weight" | "hhi" | "violations";
+type SortKey = "nav" | "total_return" | "excess_return" | "volatility" | "sharpe" | "sortino" | "beta" | "max_drawdown" | "calmar" | "operations" | "max_weight" | "hhi" | "violations" | "invested_share";
 const COLS: [SortKey, string, string][] = [
   ["nav", "NAV", "Portfolio value in euro"],
   ["total_return", "Total return", "Official ranking metric (Art. 12)"],
@@ -31,10 +31,11 @@ const COLS: [SortKey, string, string][] = [
   ["max_weight", "Max weight", "Largest position as % of the portfolio"],
   ["hhi", "HHI", "Concentration (Herfindahl index)"],
   ["violations", "Violations", "Rule violations recorded by the organiser"],
+  ["invested_share", "Invested", "Long + short positions as % of the portfolio value"],
 ];
 
 export default function Leaderboard() {
-  const [comp, setComp] = useState<"A" | "B">("A");
+  const [comp, setComp] = useState<"A" | "B" | "C">("A");
   const [open, setOpen] = useState<string | null>(null);
   // ranking metric: highest first by default; click again to reverse
   const [sortKey, setSortKey] = useState<SortKey>("total_return");
@@ -54,6 +55,8 @@ export default function Leaderboard() {
     const r = (data?.rows ?? []).filter((x) => x.competition === comp);
     const val = (x: Row) => { const v = x[sortKey]; return v === null || v === undefined ? null : Number(v); };
     return r.sort((a, b) => {
+      // Competition C: portfolios not ranked (less than half invested) always after the ranked ones
+      if (comp === "C" && (a.rank_in_competition === null) !== (b.rank_in_competition === null)) return a.rank_in_competition === null ? 1 : -1;
       const va = val(a), vb = val(b);
       if (va === null && vb === null) return a.name.localeCompare(b.name);
       if (va === null) return 1; // teams without a value always at the bottom
@@ -90,7 +93,7 @@ export default function Leaderboard() {
         <p className="muted small">Last update: {data.run ? dateTime(data.run.finished_at) : "not yet calculated"}{data.run?.as_of ? ` · prices as of ${data.run.as_of}` : ""}</p>
       </div>
       <PracticeBanner />
-      <Tabs value={comp} onChange={setComp} items={[["A", "Competition A · Association teams"], ["B", "Competition B · International teams"]]} />
+      <Tabs value={comp} onChange={setComp} items={[["A", "Competition A · Association teams"], ["B", "Competition B · International teams"], ["C", "Competition C · Individual"]]} />
       {rows.length === 0 ? (
         <p className="muted">No teams registered in this competition yet.</p>
       ) : (
@@ -119,8 +122,8 @@ export default function Leaderboard() {
                 {rows.map((r, i) => (
                   <Fragment key={r.team_id}>
                   <tr className={`clickable ${i === 0 && r[sortKey] !== null ? "first" : ""}`} onClick={() => setOpen(open === r.team_id ? null : r.team_id)}>
-                    <td className="num">{i + 1}</td>
-                    <td style={{ minWidth: 190 }}><div><b>{r.name}</b></div><div className="muted small">{r.university}</div></td>
+                    <td className="num">{comp === "C" && r.rank_in_competition === null ? <span className="not-ranked" title="Less than 50% of the portfolio invested">–</span> : i + 1}</td>
+                    <td style={{ minWidth: 190 }}><div><b>{r.name}</b></div><div className="muted small">{r.university}{comp === "C" && r.rank_in_competition === null ? " · not ranked: less than 50% invested" : ""}</div></td>
                     <td className="num">{eur(r.nav, 0)}</td>
                     <td className={`num strong ${signClass(r.total_return)}`}>{pct(r.total_return)}</td>
                     <td className={`num ${signClass(r.excess_return)}`}>{pct(r.excess_return)}</td>
@@ -134,10 +137,11 @@ export default function Leaderboard() {
                     <td className="num">{pctU(r.max_weight)}</td>
                     <td className="num">{plain(r.hhi, 3)}</td>
                     <td className="num">{r.violations ?? 0}</td>
+                    <td className="num">{pctU(r.invested_share)}</td>
                     <td><button className="secondary small chart-toggle" aria-expanded={open === r.team_id}>{open === r.team_id ? "Hide" : "Details"}</button></td>
                   </tr>
                   {open === r.team_id && (
-                    <tr className="chart-row"><td colSpan={16}><RowDetail>
+                    <tr className="chart-row"><td colSpan={17}><RowDetail>
                       <div className="small muted" style={{ marginBottom: 8 }}>Portfolio value of {r.name} in euro compared with the MSCI World (both start at {eur(1_000_000, 0)})</div>
                       <PortfolioChart mode="value"
                         title={`Portfolio value of ${r.name}`}
@@ -157,7 +161,7 @@ export default function Leaderboard() {
             </table>
           </div>
           <p className="muted small">
-            Click a team to see its portfolio chart and every position it holds, with its performance. The official ranking is by total return in euro (Art. 12); click any column to rank the teams by that metric (click again to reverse). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
+            Click a team to see its portfolio chart and every position it holds, with its performance.{comp === "C" ? " In Competition C a portfolio is ranked only when at least 50% of its value is invested (long + short), so that keeping the cash cannot win." : ""} The official ranking is by total return in euro (Art. 12); click any column to rank the teams by that metric (click again to reverse). MSCI World return to date: {pct(rows[0]?.benchmark_return)}. Risk metrics use month-end values
             and need {months < 2 ? "at least two completed months (n/a until then)" : `${months} completed months`}. Risk-free rate as set by the organiser.
           </p>
           <div className="card" style={{ marginTop: 20 }}>

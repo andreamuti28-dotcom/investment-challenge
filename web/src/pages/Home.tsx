@@ -122,11 +122,12 @@ export default function Home() {
       <div className="band">
         <section className="section">
           <div className="section-head reveal">
-            <div><div className="eyebrow">02 · Two competitions</div><h2>Same rules.<br />Separate podiums.</h2></div>
+            <div><div className="eyebrow">02 · Three competitions</div><h2>Same rules.<br />Separate podiums.</h2></div>
           </div>
           <div className="comps reveal">
             <div className="comp"><div className="letter">A</div><h3>Association teams</h3><p>Members of a single student association competing for it.</p></div>
             <div className="comp"><div className="letter">B</div><h3>International teams</h3><p>Students from different associations and countries, building one portfolio together.</p></div>
+            <div className="comp"><div className="letter">C</div><h3>Individual</h3><p>Your own € 1,000,000 portfolio, as many stocks as you like. Optional: open it from My team.</p></div>
           </div>
         </section>
       </div>

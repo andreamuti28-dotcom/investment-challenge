@@ -37,6 +37,16 @@ export default function JoinTeam({ inline = false }: { inline?: boolean } = {}) 
         <h2 style={{ margin: "10px 0 8px" }}>Join your team</h2>
         <p className="sub">Signed in as {session?.user.email}. Enter the team code your president (or the organiser) gave you to join your association's team. Competition B teams are drawn by the organiser: yours will appear here automatically.</p>
         {form}
+        <div className="stack" style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+          <p className="sub" style={{ margin: 0 }}>You can also play on your own: open your individual € 1,000,000 portfolio (Competition C), with as many stocks as you like.</p>
+          <button type="button" className="secondary" disabled={busy} onClick={async () => {
+            setBusy(true); setErr("");
+            const { error } = await supabase.rpc("join_competition_c");
+            setBusy(false);
+            if (error) return setErr(errText(error));
+            await refresh();
+          }}>Open my individual portfolio</button>
+        </div>
       </div>
     </div>
   );

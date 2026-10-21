@@ -36,6 +36,7 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
   }, [teamId, auth.team?.id]);
   const team = t.data;
   const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "chat" | "team" | "account">("portfolio");
+  const [joinMsg, alertMsg] = useState<string | null>(null);
   const q = useLoad(async () => {
     if (!team) return null;
     const [cal, pos, sub, orders, nav, bench, met, instr, fx] = await Promise.all([
@@ -72,29 +73,40 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
 
   return (
     <>
-      {!adminView && auth.teams.length > 1 && (
+      {!adminView && (auth.teams.length > 1 || !auth.teams.some((x) => x.competition === "C")) && (
         <div className="team-switch" role="tablist" aria-label="Your teams">
           {auth.teams.map((x) => (
             <button key={x.id} role="tab" aria-selected={x.id === team.id} className={x.id === team.id ? "on" : ""} onClick={() => auth.setActiveTeam(x.id)}>
-              <span className="ts-comp">{x.competition}</span><span className="ts-name">{x.name}</span>
+              <span className="ts-comp">{x.competition}</span><span className="ts-name">{x.competition === "C" ? "My portfolio" : x.name}</span>
             </button>
           ))}
+          {!auth.teams.some((x) => x.competition === "C") && (
+            <button type="button" className="ts-join" title="Open your personal € 1,000,000 portfolio (Competition C)" onClick={async () => {
+              const { data, error } = await supabase.rpc("join_competition_c");
+              if (error) return alertMsg(errText(error));
+              await auth.refresh();
+              if ((data as any)?.teamId) auth.setActiveTeam((data as any).teamId);
+            }}>
+              <span className="ts-comp">C</span><span className="ts-name">+ Individual portfolio</span>
+            </button>
+          )}
         </div>
       )}
+      {joinMsg && <Notice kind="err">{joinMsg}</Notice>}
       <div className="page-head">
-        <div className="eyebrow">Competition {team.competition} · {adminView ? "organiser view" : team.role}</div>
+        <div className="eyebrow">Competition {team.competition} · {adminView ? "organiser view" : team.competition === "C" ? "individual portfolio" : team.role}</div>
         <h1>{team.name}</h1>
         {adminView && <p className="muted small" style={{ marginTop: 8 }}>You are acting for this team: orders you place here are recorded in its name. <Link to="/admin">Back to the admin panel</Link></p>}
       </div>
       <PracticeBanner />
-      <Tabs value={tab} onChange={setTab} items={adminView
-        ? [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"]]
-        : [["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"], ["account", "Account"]]} />
-      {tab === "portfolio" && <Portfolio d={d} />}
+      <Tabs value={team.competition === "C" && (tab === "chat" || tab === "team") ? "portfolio" : tab} onChange={setTab} items={([
+        ["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"], ["account", "Account"],
+      ] as [typeof tab, string][]).filter(([k]) => !(adminView && k === "account") && !(team.competition === "C" && (k === "chat" || k === "team")))} />
+      {(tab === "portfolio" || (team.competition === "C" && (tab === "chat" || tab === "team"))) && <Portfolio d={d} />}
       {tab === "orders" && <Orders d={d} reload={q.reload} />}
       {tab === "history" && <History d={d} />}
-      {tab === "chat" && <TeamChat key={team.id} teamId={team.id} teamName={team.name} />}
-      {tab === "team" && <TeamTab key={team.id} teamId={team.id} admin={adminView} />}
+      {tab === "chat" && team.competition !== "C" && <TeamChat key={team.id} teamId={team.id} teamName={team.name} />}
+      {tab === "team" && team.competition !== "C" && <TeamTab key={team.id} teamId={team.id} admin={adminView} />}
       {tab === "account" && <Account />}
     </>
   );
@@ -192,6 +204,22 @@ function describe(action: string, side: string, qty: string | number, symbol: st
 }
 
 function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
+  const auth = useAuth();
+  const isC = auth.teams.find((x) => x.id === d.teamId)?.competition === "C";
+  const sources = auth.teams.filter((x) => x.competition !== "C");
+  const [copyMsg, setCopyMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  async function copyFrom(teamId: string, teamName: string) {
+    setCopyMsg(null);
+    const { data, error } = await supabase.rpc("copy_to_c", { p_source: teamId });
+    if (error) return setCopyMsg({ kind: "err", text: errText(error) });
+    const r = data as { copied: number; skipped: number; alreadyHeld: number; scale: number };
+    const parts = [`${r.copied} ${r.copied === 1 ? "order" : "orders"} created from ${teamName}`];
+    if (r.scale < 1) parts.push(`quantities scaled to ${Math.round(r.scale * 100)}% to fit your free budget`);
+    if (r.alreadyHeld) parts.push(`${r.alreadyHeld} already in your portfolio`);
+    if (r.skipped) parts.push(`${r.skipped} skipped (no price yet or too small)`);
+    setCopyMsg({ kind: r.copied ? "ok" : "err", text: r.copied || r.alreadyHeld ? parts.join(" · ") + "." : `No stocks of yours to copy from ${teamName}: copy works with the positions and pending orders you placed there.` });
+    await reload();
+  }
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[] | null>(null);
   const [sel, setSel] = useState<{ symbol: string; name: string; exchange: string; currency: string; lastPrice: number | null; closeDate: string | null; fx: number | null } | null>(null);
@@ -302,15 +330,25 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
       <Notice kind="warn">
         You can trade on any trading day. An order is executed at the <b>closing price of the day you place it</b>, on the stock's own
         exchange, with no commissions. Orders placed after that exchange has closed, or at the weekend, are executed at the close of the next
-        trading day; orders placed before {date(d.settings.start_date)} at the close of the first day. Until the close you can cancel or replace
+        trading day. Until the close you can cancel or replace
         an order. A short is closed automatically if the price rises {pct(d.settings.stop_threshold, 0).replace("+", "")} above entry.
       </Notice>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
 
+      {isC && !d.adminView && sources.length > 0 && (
+        <div className="card copy-card" style={{ marginBottom: 20 }}>
+          <h3>Copy your picks</h3>
+          <p className="muted small">Copy into your individual portfolio the stocks you chose in your teams (your positions and pending orders there), with the same side and quantity. If they do not fit in your free budget, the quantities are scaled down proportionally. Stocks you already hold here are left as they are; you can change everything afterwards.</p>
+          {copyMsg && <Notice kind={copyMsg.kind}>{copyMsg.text}</Notice>}
+          <div className="row">
+            {sources.map((s) => <button key={s.id} type="button" className="secondary" onClick={() => copyFrom(s.id, s.name)}>Copy from {s.competition} · {s.name}</button>)}
+          </div>
+        </div>
+      )}
       <div className="grid cols-2">
         <div className="card">
           <h3>New order</h3>
-          {usage.data && (
+          {usage.data && usage.data.limit <= 10 && (
             <div className={`stock-quota ${usage.data.used >= usage.data.limit ? "full" : ""}`}>
               <span>Your stocks</span>
               <span className="dots" aria-hidden="true">{Array.from({ length: usage.data.limit }, (_, i) => <i key={i} className={i < usage.data!.used ? "on" : ""} />)}</span>
@@ -557,7 +595,7 @@ function TeamTab({ teamId, admin }: { teamId: string; admin: boolean }) {
 }
 
 /** Max different stocks per member: the president of an association team chooses 1–10 ("no limit" = 10); always 10 in Competition B. */
-function StockLimit({ teamId, canEdit, competition }: { teamId: string; canEdit: boolean; competition: "A" | "B" | null }) {
+function StockLimit({ teamId, canEdit, competition }: { teamId: string; canEdit: boolean; competition: "A" | "B" | "C" | null }) {
   const q = useLoad(async () => must(supabase.from("teams").select("competition,member_stock_limit").eq("id", teamId).single()) as Promise<any>, [teamId]);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   if (!q.data) return null;

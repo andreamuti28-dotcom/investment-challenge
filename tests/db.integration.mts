@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -302,7 +302,7 @@ await expectErr("limit above 10 refused", () => as("authenticated", U7, `select 
 ok("Competition B is always 10", ((await db.query(`select stock_limit_of('${B1}') l`)).rows[0] as any).l === 10);
 // profiles, participants, unanimous B names, organisers out
 await expectErr("organisers cannot join a team", () => as("authenticated", ADMIN, `select set_membership_admin('${ADMIN}', '${A2}', 'member')`), /Organisers do not take part/);
-const pre = await as("anon", null, `select first_name, last_name from participants() where user_id = '${U5}'`);
+const pre = await as("anon", null, `select first_name, last_name from participants_list() where user_id = '${U5}'`);
 ok("participant name from the team when no profile yet", (pre.rows[0] as any)?.first_name === "Nuovo" && (pre.rows[0] as any)?.last_name === "Membro", JSON.stringify(pre.rows));
 await as("authenticated", U5, `select update_my_profile('Mario', 'Rossi', 'linkedin.com/in/mario-rossi')`);
 const p5 = await db.query(`select linkedin_url from profiles where user_id = '${U5}'`);
@@ -359,4 +359,20 @@ ok("without practice, orders wait for the start", (t0.rows[0] as any).d === "202
 await db.exec(`update challenge_settings set practice_start_date = '2026-10-21' where id = 1`);
 const t1 = await db.query(`select exec_date::text d from next_close('2026-10-21 10:00+02', 'Europe/Rome', '17:30')`);
 ok("with practice, orders execute at that day's close", (t1.rows[0] as any).d === "2026-10-21", JSON.stringify(t1.rows));
+// Competition C: personal portfolio and copy from A/B
+const jc = await as("authenticated", UA, `select join_competition_c() j`);
+const CT = (jc.rows[0] as any).j.teamId;
+ok("personal portfolio created", !!CT && ((await db.query(`select competition from teams where id = '${CT}'`)).rows[0] as any).competition === "C", JSON.stringify(jc.rows[0]));
+await expectErr("only one personal portfolio", () => as("authenticated", UA, `select join_competition_c()`), /already have/);
+await expectErr("organisers stay out of C", () => as("authenticated", ADMIN, `select join_competition_c()`), /Organisers/);
+ok("no stock limit in C", ((await db.query(`select stock_limit_of('${CT}') l`)).rows[0] as any).l === 1000);
+const cp = await as("authenticated", UA, `select copy_to_c('${A3}') j`);
+ok("stocks copied from the A team", (cp.rows[0] as any).j.copied === 1, JSON.stringify(cp.rows[0]));
+const co = await db.query(`select symbol, side, target_quantity::int q from orders where team_id = '${CT}' and status = 'pending'`);
+ok("same stock, side and quantity", (co.rows[0] as any)?.symbol === "BUD1.MI" && (co.rows[0] as any)?.q === 44000, JSON.stringify(co.rows));
+const cp2 = await as("authenticated", UA, `select copy_to_c('${A3}') j`);
+ok("stocks already in C are not copied twice", (cp2.rows[0] as any).j.alreadyHeld === 1 && (cp2.rows[0] as any).j.copied === 0, JSON.stringify(cp2.rows[0]));
+await expectErr("cannot copy from someone else's team", () => as("authenticated", UA, `select copy_to_c('${A1}')`), /not a member/);
+const pc = await as("anon", null, `select team_c_id from participants_list() where user_id = '${UA}'`);
+ok("participants show the personal portfolio", !!(pc.rows[0] as any)?.team_c_id);
 console.log(fails ? `\n${fails} FAILED` : "\nALL DB TESTS PASSED");

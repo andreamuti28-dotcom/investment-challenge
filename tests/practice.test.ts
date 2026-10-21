@@ -82,3 +82,18 @@ test("without a practice date the engine behaves as before", () => {
   assert.equal(r.positions[0].entryPrice, 16);
   assert.equal(r.metrics[0].operations, 1);
 });
+
+test("Competition C ranks only portfolios with at least half of their value invested", () => {
+  const i = input([
+    { id: "c1", teamId: "C1", monthN: 1, symbol: "ENI.MI", action: "open", side: "long", quantity: 60000, createdAt: "2026-12-01T08:00:00Z", execDate: "2026-12-01" },
+    { id: "c2", teamId: "C2", monthN: 1, symbol: "ENI.MI", action: "open", side: "long", quantity: 1000, createdAt: "2026-12-01T08:00:00Z", execDate: "2026-12-01" },
+  ]);
+  i.settings.practiceStartDate = null;
+  i.teams = [{ id: "C1", name: "Busy", competition: "C", violations: 0 }, { id: "C2", name: "Cash", competition: "C", violations: 0 }];
+  const r = runChallenge(i, "2026-12-02");
+  const m = (id: string) => r.metrics.find((x) => x.teamId === id)!;
+  assert.ok(m("C1").investedShare! > 0.5);
+  assert.equal(m("C1").rankInCompetition, 1);
+  assert.ok(m("C2").investedShare! < 0.5);
+  assert.equal(m("C2").rankInCompetition, null); // shown as not ranked
+});

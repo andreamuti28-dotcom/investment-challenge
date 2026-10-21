@@ -5,7 +5,7 @@ import { supabase } from "./supabase";
 export interface Team {
   id: string;
   name: string;
-  competition: "A" | "B";
+  competition: "A" | "B" | "C";
   university: string | null;
   role: "president" | "member";
 }

@@ -29,7 +29,7 @@ export interface Month {
 export interface Team {
   id: string;
   name: string;
-  competition: "A" | "B";
+  competition: "A" | "B" | "C";
   violations: number;
 }
 export interface Instrument {
@@ -149,6 +149,8 @@ export interface MetricsOut {
   hhi: number | null;
   currencyExposure: Record<string, number>;
   violations: number;
+  /** long + short value as a share of NAV (Competition C ranks only portfolios with at least C_MIN_INVESTED) */
+  investedShare: number | null;
 }
 export interface OrderUpdate {
   id: string;
@@ -178,6 +180,9 @@ export interface EngineOutput {
   transferUpdates: TransferUpdate[];
   warnings: string[];
 }
+
+/** Competition C (individual): a portfolio is ranked only when at least this share of its value is invested. */
+export const C_MIN_INVESTED = 0.5;
 
 // ------------------------------------------------------------------ dates
 const DAY = 86_400_000;
@@ -724,10 +729,13 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       hhi: gross ? vals.reduce((a, x) => a + (x.v / gross) ** 2, 0) : null,
       currencyExposure: exposure,
       violations: team.violations ?? 0,
+      investedShare: lv.nav ? gross / lv.nav : null,
     });
   }
-  for (const comp of ["A", "B"]) {
-    const group = out.metrics.filter((m) => input.teams.find((t) => t.id === m.teamId)?.competition === comp);
+  for (const comp of ["A", "B", "C"]) {
+    // in Competition C a portfolio that is mostly cash is not ranked (otherwise doing nothing could win)
+    const eligible = (m: MetricsOut) => m.totalReturn !== null && (comp !== "C" || (m.investedShare ?? 0) >= C_MIN_INVESTED - 1e-9);
+    const group = out.metrics.filter((m) => input.teams.find((t) => t.id === m.teamId)?.competition === comp).filter(eligible);
     for (const m of group) {
       if (m.totalReturn === null) continue;
       m.rankInCompetition = 1 + group.filter((x) => x.totalReturn !== null && x.totalReturn > m.totalReturn! + 1e-12).length;
