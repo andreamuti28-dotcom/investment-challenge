@@ -32,8 +32,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
         <div className="who" style={{ margin: "8px 0 4px" }}>{team ? team.name : isAdmin ? "Organiser" : "Welcome"}</div>
         <p className="sub">{session.user.email}{team ? ` · ${team.role}` : ""}</p>
         <div className="stack">
-          {team && <Link className="btn primary" to="/team">Open my portfolio</Link>}
-          {!team && !isAdmin && <Link className="btn primary" to="/team">Join your team with the code</Link>}
+          {!isAdmin && <Link className="btn primary" to="/play">Choose your competition</Link>}
           {isAdmin && <Link className="btn primary" to="/admin">Open the admin panel</Link>}
           <Link className="btn secondary" style={{ width: "100%" }} to="/leaderboard">See the leaderboard</Link>
           <button className="linklike" onClick={() => supabase.auth.signOut()}>Sign out</button>
@@ -47,7 +46,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     setBusy(false);
     if (error) return setErr(error.message === "Invalid login credentials" ? "Wrong e-mail or password." : error.message);
-    nav("/team");
+    nav("/play");
   }
 
   async function sendReset() {
@@ -66,7 +65,7 @@ export default function AuthPanel({ initial = "signin" }: { initial?: Mode }) {
       await callFunction("register", { firstName, lastName, email: email.trim(), password, code: code.trim() || undefined });
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
-      nav("/team");
+      nav("/play");
     } catch (e) {
       setErr(errText(e));
     }

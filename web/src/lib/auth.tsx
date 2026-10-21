@@ -13,30 +13,36 @@ interface AuthState {
   session: Session | null;
   loading: boolean;
   isAdmin: boolean;
-  /** the team shown in "My team" (a person can be in one A team and one B team) */
+  /** the competition chosen after signing in: every page then refers to it */
+  competition: "A" | "B" | "C" | null;
+  setCompetition: (c: "A" | "B" | "C" | null) => void;
+  /** the user's team in the chosen competition (null when not chosen or not in a team there) */
   team: Team | null;
   /** every team of the user, A first */
   teams: Team[];
   setActiveTeam: (id: string) => void;
   refresh: () => Promise<void>;
 }
-const Ctx = createContext<AuthState>({ session: null, loading: true, isAdmin: false, team: null, teams: [], setActiveTeam: () => {}, refresh: async () => {} });
+const Ctx = createContext<AuthState>({ session: null, loading: true, isAdmin: false, competition: null, setCompetition: () => {}, team: null, teams: [], setActiveTeam: () => {}, refresh: async () => {} });
 
-const KEY = "ic_active_team";
-const remembered = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
+const KEY = "ic_competition";
+type Comp = "A" | "B" | "C";
+const remembered = (): Comp | null => { try { const v = sessionStorage.getItem(KEY); return v === "A" || v === "B" || v === "C" ? v : null; } catch { return null; } };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setAdmin] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(remembered());
+  const [competition, setComp] = useState<Comp | null>(remembered());
 
   async function load(s: Session | null) {
     setSession(s);
     if (!s) {
       setAdmin(false);
       setTeams([]);
+      setComp(null);
+      try { sessionStorage.removeItem(KEY); } catch { /* ignore */ }
       setLoading(false);
       return;
     }
@@ -63,14 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const team = teams.find((t) => t.id === activeId) ?? teams[0] ?? null;
-  const setActiveTeam = (id: string) => {
-    setActiveId(id);
-    try { localStorage.setItem(KEY, id); } catch { /* per-browser convenience only */ }
+  const team = competition ? teams.find((t) => t.competition === competition) ?? null : null;
+  const setCompetition = (c: Comp | null) => {
+    setComp(c);
+    try { if (c) sessionStorage.setItem(KEY, c); else sessionStorage.removeItem(KEY); } catch { /* convenience only */ }
   };
+  const setActiveTeam = (id: string) => { const t = teams.find((x) => x.id === id); if (t) setCompetition(t.competition); };
 
   return (
-    <Ctx.Provider value={{ session, loading, isAdmin, team, teams, setActiveTeam, refresh: async () => load((await supabase.auth.getSession()).data.session) }}>
+    <Ctx.Provider value={{ session, loading, isAdmin, competition, setCompetition, team, teams, setActiveTeam, refresh: async () => load((await supabase.auth.getSession()).data.session) }}>
       {children}
     </Ctx.Provider>
   );

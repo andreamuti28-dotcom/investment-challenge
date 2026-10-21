@@ -680,3 +680,26 @@ td.strong { font-weight: 600; }
 .ts-join:hover { color: #fff !important; }
 .copy-card .row { flex-wrap: wrap; gap: 8px; }
 .not-ranked { font-size: 11px; color: var(--muted); }
+
+/* competition hub */
+.hub-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 8px; }
+@media (max-width: 960px) { .hub-grid { grid-template-columns: 1fr; } }
+.hub-card { display: flex; flex-direction: column; gap: 12px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); min-height: 280px; }
+.hub-card.ready { border-color: var(--line-2); }
+.hub-card.current { border-color: rgba(123, 156, 255, 0.7); box-shadow: 0 0 0 1px rgba(123, 156, 255, 0.35) inset; }
+.hub-top { display: flex; gap: 14px; align-items: center; }
+.hub-top h3 { margin: 2px 0 0; font-size: 20px; }
+.hub-letter { font-family: var(--display); font-weight: 700; font-size: 54px; line-height: 0.9; color: #fff; letter-spacing: -0.04em; width: 48px; }
+.hub-team { font-size: 15px; }
+.hub-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; border-radius: var(--radius); background: rgba(255, 255, 255, 0.03); }
+.hub-stats div { display: flex; flex-direction: column; gap: 2px; }
+.hub-go { margin-top: auto; width: 100%; }
+.hub-wait { margin-top: auto; padding: 12px; border: 1px dashed var(--line-2); border-radius: var(--radius); color: var(--muted); }
+.hub-join { margin-top: auto; }
+.comp-chip, .comp-chip:hover { text-decoration: none !important; }
+.comp-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 13px; color: #d7dce4; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comp-chip b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #0b0e14; font-size: 11px; flex: none; }
+.comp-chip .sw { color: var(--muted); font-size: 11px; border-left: 1px solid var(--line-2); padding-left: 8px; }
+.comp-chip:hover { border-color: rgba(123, 156, 255, 0.7); }
+
+@media (max-width: 720px) { .comp-chip { max-width: 150px; } .comp-chip .sw { display: none; } }

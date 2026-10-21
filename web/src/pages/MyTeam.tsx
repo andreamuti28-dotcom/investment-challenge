@@ -36,7 +36,6 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
   }, [teamId, auth.team?.id]);
   const team = t.data;
   const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "chat" | "team" | "account">("portfolio");
-  const [joinMsg, alertMsg] = useState<string | null>(null);
   const q = useLoad(async () => {
     if (!team) return null;
     const [cal, pos, sub, orders, nav, bench, met, instr, fx] = await Promise.all([
@@ -73,30 +72,11 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
 
   return (
     <>
-      {!adminView && (auth.teams.length > 1 || !auth.teams.some((x) => x.competition === "C")) && (
-        <div className="team-switch" role="tablist" aria-label="Your teams">
-          {auth.teams.map((x) => (
-            <button key={x.id} role="tab" aria-selected={x.id === team.id} className={x.id === team.id ? "on" : ""} onClick={() => auth.setActiveTeam(x.id)}>
-              <span className="ts-comp">{x.competition}</span><span className="ts-name">{x.competition === "C" ? "My portfolio" : x.name}</span>
-            </button>
-          ))}
-          {!auth.teams.some((x) => x.competition === "C") && (
-            <button type="button" className="ts-join" title="Open your personal € 1,000,000 portfolio (Competition C)" onClick={async () => {
-              const { data, error } = await supabase.rpc("join_competition_c");
-              if (error) return alertMsg(errText(error));
-              await auth.refresh();
-              if ((data as any)?.teamId) auth.setActiveTeam((data as any).teamId);
-            }}>
-              <span className="ts-comp">C</span><span className="ts-name">+ Individual portfolio</span>
-            </button>
-          )}
-        </div>
-      )}
-      {joinMsg && <Notice kind="err">{joinMsg}</Notice>}
       <div className="page-head">
         <div className="eyebrow">Competition {team.competition} · {adminView ? "organiser view" : team.competition === "C" ? "individual portfolio" : team.role}</div>
-        <h1>{team.name}</h1>
+        <h1>{team.competition === "C" && !adminView ? "My portfolio" : team.name}</h1>
         {adminView && <p className="muted small" style={{ marginTop: 8 }}>You are acting for this team: orders you place here are recorded in its name. <Link to="/admin">Back to the admin panel</Link></p>}
+        {!adminView && <p className="muted small" style={{ marginTop: 8 }}>Everything on this page refers to Competition {team.competition}. <Link to="/play">Switch competition</Link></p>}
       </div>
       <PracticeBanner />
       <Tabs value={team.competition === "C" && (tab === "chat" || tab === "team") ? "portfolio" : tab} onChange={setTab} items={([
@@ -587,9 +567,6 @@ function TeamTab({ teamId, admin }: { teamId: string; admin: boolean }) {
         <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. Add your LinkedIn link in the Account tab. To remove a member, contact the organiser.</p>
       </div>
       <StockLimit teamId={teamId} canEdit={admin || (t.role === "president")} competition={teams.find((x) => x.id === teamId)?.competition ?? null} />
-      {!admin && !teams.some((x) => x.competition === "A") && (
-        <div className="card"><h3>Your association's team</h3><p className="muted small">You are not in a Competition A team yet: enter the code your president gave you.</p><JoinTeam inline /></div>
-      )}
     </div>
   );
 }

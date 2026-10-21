@@ -7,6 +7,7 @@ import { PALETTE, type Series } from "../components/LineChart";
 import { PortfolioChart } from "../components/PortfolioChart";
 import { TeamHoldings } from "../components/TeamHoldings";
 import { PracticeBanner } from "../components/PracticeBanner";
+import { useAuth } from "../lib/auth";
 
 interface Row {
   team_id: string; name: string; competition: "A" | "B" | "C"; university: string | null; nav: number | null;
@@ -35,7 +36,8 @@ const COLS: [SortKey, string, string][] = [
 ];
 
 export default function Leaderboard() {
-  const [comp, setComp] = useState<"A" | "B" | "C">("A");
+  const auth = useAuth();
+  const [comp, setComp] = useState<"A" | "B" | "C">(auth.competition ?? "A");
   const [open, setOpen] = useState<string | null>(null);
   // ranking metric: highest first by default; click again to reverse
   const [sortKey, setSortKey] = useState<SortKey>("total_return");

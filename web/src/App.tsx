@@ -9,6 +9,7 @@ import MyTeam from "./pages/MyTeam";
 import Admin from "./pages/Admin";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
+import Hub from "./pages/Hub";
 import Participants, { Participant } from "./pages/Participants";
 import { Cookies, Privacy } from "./pages/Legal";
 import CookieBanner from "./components/CookieBanner";
@@ -28,8 +29,15 @@ function Guard({ need, children }: { need: "team" | "admin"; children: ReactNode
   if (!session) return <Navigate to="/login" replace />;
   if (need === "admin" && !isAdmin) return <p>This area is reserved to the organiser.</p>;
   if (need === "team" && !team) {
-    return isAdmin ? <Navigate to="/admin" replace /> : <JoinTeam />;
+    return isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/play" replace />;
   }
+  return <>{children}</>;
+}
+
+function SignedIn({ children }: { children: ReactNode }) {
+  const { session, loading } = useAuth();
+  if (loading) return <p className="muted">Loading…</p>;
+  if (!session) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -78,14 +86,17 @@ export default function App() {
               <NavLink to="/" end>Home</NavLink>
               <NavLink to="/leaderboard">Leaderboard</NavLink>
               <NavLink to="/participants">Participants</NavLink>
-              {(team || (session && !isAdmin)) && <NavLink to="/team">My team</NavLink>}
-              {session && !isAdmin && team && <NavLink to="/me">Profile</NavLink>}
+              {session && !isAdmin && <NavLink to="/play" end>Competitions</NavLink>}
+              {session && !isAdmin && team && <NavLink to="/team">{team.competition === "C" ? "My portfolio" : "My team"}</NavLink>}
+              {session && !isAdmin && <NavLink to="/me">Profile</NavLink>}
               {isAdmin && <NavLink to="/admin">Admin</NavLink>}
             </nav>
             <div className="nav-right">
               {session ? (
                 <>
-                  <span>{team ? `${team.name} · ${team.role}` : session.user.email}</span>
+                  {team
+                    ? <NavLink to="/play" className="comp-chip" title="Switch competition"><b>{team.competition}</b>{team.competition === "C" ? "Individual" : team.name}<span className="sw">switch</span></NavLink>
+                    : <span>{session.user.email}</span>}
                   <button className="secondary small" onClick={async () => { await supabase.auth.signOut(); nav("/"); }}>Sign out</button>
                 </>
               ) : (
@@ -102,7 +113,8 @@ export default function App() {
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/participants" element={<Participants />} />
           <Route path="/participants/:id" element={<Participant />} />
-          <Route path="/me" element={<Guard need="team"><Profile /></Guard>} />
+          <Route path="/me" element={<SignedIn><Profile /></SignedIn>} />
+          <Route path="/play" element={<Hub />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/team" element={<Guard need="team"><MyTeam /></Guard>} />
