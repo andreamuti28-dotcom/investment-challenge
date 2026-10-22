@@ -112,7 +112,12 @@ function Teams() {
               onClick={() => { pickComp(c); setForm({ ...empty, competition: c === "C" ? "A" : c }); setMsg(null); }}>
               <span className="hub-letter">{c}</span>
               <span className="ac-text"><b>Competition {c} · {title}</b><span className="muted small">{sub}</span></span>
-              <span className="ac-count"><b>{n.length}</b><span className="muted small">{c === "C" ? (n.length === 1 ? "portfolio" : "portfolios") : n.length === 1 ? "team" : "teams"} · {n.reduce((a: number, t: any) => a + t.members, 0)} people</span></span>
+              {(() => {
+                const people = n.reduce((a: number, t: any) => a + t.members, 0);
+                return (
+                  <span className="ac-count"><b>{people}</b><span className="muted small">{people === 1 ? "participant" : "participants"} · {c === "C" ? `${n.length} ${n.length === 1 ? "portfolio" : "portfolios"}` : `${n.length} ${n.length === 1 ? "team" : "teams"}`}</span></span>
+                );
+              })()}
             </button>
           );
         })}
