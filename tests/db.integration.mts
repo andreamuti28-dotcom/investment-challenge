@@ -14,13 +14,13 @@ const expectErr = async (name: string, fn: () => Promise<unknown>, re: RegExp) =
 await db.exec(`
   create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   create schema auth;
-  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
+  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb, created_at timestamptz default now());
   create schema vault; create table vault.decrypted_secrets (name text, decrypted_secret text);
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql", "20261021140000_organiser_linkedin.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql", "20261021140000_organiser_linkedin.sql", "20261022100000_registration_notice.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -313,6 +313,9 @@ await as("authenticated", ADMIN, `select update_my_profile('Andrea', 'Muti', 'li
 const org = await as("anon", null, "select organiser_linkedin() u");
 ok("the organiser sets their LinkedIn, shown publicly", (org.rows[0] as any).u === "https://linkedin.com/in/organiser", JSON.stringify(org.rows));
 ok("organiser not in the participants list", !(await as("anon", null, "select user_id from participants_list()")).rows.some((r: any) => r.user_id === ADMIN));
+const rni = (await db.query("select registration_notice_info() j")).rows[0] as any;
+ok("registration notice: organiser e-mails and counts", rni.j.organisers.includes("admin@x") && rni.j.total > 0 && rni.j.today === rni.j.total, JSON.stringify(rni.j));
+await expectErr("registration info is not public", () => as("anon", null, "select registration_notice_info()"), /permission denied/);
 const parts = await as("anon", null, "select * from participants()");
 ok("participants are public, organisers excluded", parts.rows.length > 0 && !parts.rows.some((r: any) => r.user_id === ADMIN), String(parts.rows.length));
 const mv = await as("anon", null, `select status from participant_moves('${U7}')`);

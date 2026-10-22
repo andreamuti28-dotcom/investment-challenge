@@ -2,8 +2,45 @@
 // Body: { firstName, lastName, email, password, code? }
 // With a valid team code the account joins that team at once; without it, the member joins
 // later from their account. The organiser marks the presidents in Admin > Accounts.
-// Accounts are confirmed at once.
+// Accounts are confirmed at once. The organiser receives an e-mail for every new registration
+// (Resend: RESEND_API_KEY secret or 'resend_api_key' in Vault).
 import { cors, env, json, serviceHeaders } from "../_shared/http.ts";
+
+const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+
+async function notifyOrganiser(e: ReturnType<typeof env>, H: Record<string, string>, who: { name: string; email: string; team: string | null }) {
+  try {
+    const post = (fn: string) => fetch(`${e.supabaseUrl}/rest/v1/rpc/${fn}`, { method: "POST", headers: H, body: "{}" }).then((x) => (x.ok ? x.json() : null));
+    const [info, vaultKey] = await Promise.all([post("registration_notice_info"), Deno.env.get("RESEND_API_KEY") ? null : post("mail_api_key")]);
+    const key = Deno.env.get("RESEND_API_KEY") ?? vaultKey;
+    const to: string[] = Deno.env.get("ORGANISER_EMAIL")?.split(",").map((x) => x.trim()).filter(Boolean) ?? info?.organisers ?? [];
+    if (!key || !to.length) return;
+    const site = Deno.env.get("SITE_URL") ?? "https://internationalchallenge.org/";
+    const row = (k: string, v: unknown) => `<tr><td style="padding:4px 14px 4px 0;color:#666">${k}</td><td>${esc(v)}</td></tr>`;
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: Deno.env.get("MAIL_FROM") ?? "Investment Challenge <onboarding@resend.dev>",
+        to,
+        subject: `New registration: ${who.name}${who.team ? ` (${who.team})` : ""}`,
+        html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111">
+          <p><b>${esc(who.name)}</b> has just registered on the Investment Challenge.</p>
+          <table style="border-collapse:collapse">
+            ${row("Name", who.name)}${row("E-mail", who.email)}
+            ${row("Team (Competition A)", who.team ?? "none yet: registered without a team code")}
+            ${row("When", new Date().toLocaleString("en-GB", { timeZone: "Europe/Rome" }) + " (Rome)")}
+            ${info ? row("Registered so far", `${info.total} participants (${info.today} today)`) : ""}
+          </table>
+          <p><a href="${esc(site)}admin">Open Admin &gt; Accounts</a></p>
+        </div>`,
+      }),
+    });
+    if (!r.ok) console.error("resend", r.status, await r.text());
+  } catch (err) {
+    console.error("notify", String(err));
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -55,6 +92,7 @@ Deno.serve(async (req) => {
         throw err;
       }
     }
+    await notifyOrganiser(e, H, { name, email, team: team?.team_name ?? null });
     return json({ ok: true, team: team?.team_name ?? null });
   } catch (err) {
     console.error(err);
