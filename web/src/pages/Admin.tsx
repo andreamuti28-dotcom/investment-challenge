@@ -545,6 +545,12 @@ function SettingsTab() {
           <div><label htmlFor="s10">Start date shown on the website</label><input id="s10" type="date" value={cur.public_start_date ?? ""} onChange={(e) => set("public_start_date", e.target.value || null)} /><p className="small muted" style={{ margin: "4px 0 0" }}>Key dates on the home page. The start date above drives the calculations.</p></div>
           <div><label htmlFor="s11">Registration deadline</label><input id="s11" type="date" value={cur.registration_deadline ?? ""} onChange={(e) => set("registration_deadline", e.target.value)} /></div>
           <div><label htmlFor="s8">Regulation PDF link</label><input id="s8" value={cur.regulation_url ?? ""} onChange={(e) => set("regulation_url", e.target.value || null)} placeholder="https://…" /></div>
+          <div><label htmlFor="s12">Sponsor link</label><input id="s12" value={cur.sponsor_url ?? ""} onChange={(e) => set("sponsor_url", e.target.value || null)} placeholder="https://wefocusbuddy.com/v" /><p className="small muted" style={{ margin: "4px 0 0" }}>Where every WeFocusBuddy button of the website points (home page and footer).</p></div>
+          <div>
+            <label htmlFor="s13">Exchange rates</label>
+            <label className="row" style={{ gap: 8, fontWeight: 400, minHeight: 44 }}><input id="s13" type="checkbox" style={{ width: 18, minHeight: 0 }} checked={!!cur.fx_parity} onChange={(e) => set("fx_parity", e.target.checked)} /> Force every currency 1:1 with the euro</label>
+            <p className="small muted" style={{ margin: "4px 0 0" }}>When on, 1 USD = 1 GBP = 1 € everywhere (team values, leaderboard, budgets, benchmark) instead of the ECB rates. Everything is recalculated when you save.</p>
+          </div>
         </div>
         <button style={{ marginTop: 16 }} disabled={!s} onClick={async () => {
           const { error } = await supabase.from("challenge_settings").update({
@@ -552,6 +558,7 @@ function SettingsTab() {
             benchmark_symbol: cur.benchmark_symbol, benchmark_currency: cur.benchmark_currency, start_date: cur.start_date, end_date: cur.end_date,
             regulation_url: cur.regulation_url, edition_year: Number(cur.edition_year) || 2026, public_start_date: cur.public_start_date || null, practice_start_date: cur.practice_start_date || null,
             registration_deadline: cur.registration_deadline, updated_at: new Date().toISOString(),
+            sponsor_url: cur.sponsor_url && /^https?:\/\//i.test(cur.sponsor_url) ? cur.sponsor_url.trim() : cur.sponsor_url ? `https://${String(cur.sponsor_url).trim()}` : null, fx_parity: !!cur.fx_parity,
           }).eq("id", 1);
           if (error) { setMsg({ kind: "err", text: errText(error) }); return; }
           loadEdition(true);

@@ -17,7 +17,6 @@ import AuthPanel from "./components/AuthPanel";
 import JoinTeam from "./components/JoinTeam";
 import { openCookiePreferences, trackVisit } from "./lib/consent";
 
-const SPONSOR_URL = "https://wefocusbuddy.com/a";
 const heroVars = {
   "--hero-img-lg": `url("${import.meta.env.BASE_URL}hero-halftone.webp")`,
   "--hero-img-sm": `url("${import.meta.env.BASE_URL}hero-halftone-small.webp")`,
@@ -128,7 +127,7 @@ export default function App() {
       </main>
       <footer className="site">
         <div className="inner">
-          <span>Sponsored by <a href={SPONSOR_URL} target="_blank" rel="noreferrer">WeFocusBuddy</a></span>
+          <span>Sponsored by <a href={ed.sponsorUrl} target="_blank" rel="noreferrer">WeFocusBuddy</a></span>
           <span className="footer-links">
             <NavLink to="/leaderboard">Leaderboard</NavLink>
             <NavLink to="/privacy">Privacy</NavLink>

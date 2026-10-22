@@ -20,6 +20,8 @@ export interface Settings {
   /** optional warm-up before the start: orders execute from this date, and the positions still
    *  open on the eve of the start are carried into the challenge at the start's closing prices */
   practiceStartDate?: string | null;
+  /** organiser's switch: every currency counts 1:1 with the euro */
+  fxParity?: boolean;
 }
 export interface Month {
   n: number;
@@ -64,6 +66,8 @@ export interface Transfer {
  *  after its open order for the same close. */
 export interface StopRow {
   id?: string;
+  /** "stop" = stop loss (default), "take" = take profit (long: close at or above, short: at or below) */
+  kind?: "stop" | "take";
   teamId: string;
   symbol: string;
   stopPrice: number | null;
@@ -112,7 +116,7 @@ export interface PositionOut {
   entryPrice: number;
   exitDate: string | null;
   exitPrice: number | null;
-  exitReason: "order" | "change" | "stop" | "stop_loss" | null;
+  exitReason: "order" | "change" | "stop" | "stop_loss" | "take_profit" | null;
   openMonth: number;
   closeMonth: number | null;
   orderId: string;
@@ -124,6 +128,8 @@ export interface PositionOut {
   pnlEur: number | null;
   /** stop loss active on the position at the end of the run (open positions) */
   stopLoss?: number | null;
+  /** take profit active on the position at the end of the run (open positions) */
+  takeProfit?: number | null;
 }
 export interface LedgerOut {
   teamId: string;
@@ -344,8 +350,8 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
   const price = (sym: string, d: string) => px.get(sym)?.asOf(d)?.value;
   const closeOn = (sym: string, d: string) => px.get(sym)?.at(d);
   const fxAsOf = (c: string, d: string): number | undefined =>
-    c === "EUR" ? 1 : fxS.get(c)?.asOf(d)?.value;
-  const fxOn = (c: string, d: string): number | undefined => (c === "EUR" ? 1 : fxS.get(c)?.at(d));
+    c === "EUR" || S.fxParity ? 1 : fxS.get(c)?.asOf(d)?.value;
+  const fxOn = (c: string, d: string): number | undefined => (c === "EUR" || S.fxParity ? 1 : fxS.get(c)?.at(d));
 
   // calendar of days to replay
   const days: string[] = [];
@@ -442,10 +448,15 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       stopsOn.get(x.effDate)!.push(x);
     }
     const activeStop = new Map<string, number>();
-    const setStop = (sym: string, v: number | null) => (v && v > 0 ? activeStop.set(sym, v) : activeStop.delete(sym));
-    // stop events dated before the first replayed day apply from the first day
+    const activeTake = new Map<string, number>();
+    const setStop = (x: StopRow) => {
+      const m = x.kind === "take" ? activeTake : activeStop;
+      if (x.stopPrice && x.stopPrice > 0) m.set(x.symbol, x.stopPrice);
+      else m.delete(x.symbol);
+    };
+    // events dated before the first replayed day apply from the first day
     const firstDay = days[0];
-    if (firstDay) for (const x of tStops) if (x.effDate < firstDay) setStop(x.symbol, x.stopPrice);
+    if (firstDay) for (const x of tStops) if (x.effDate < firstDay) setStop(x);
     const closePos = (p: OpenPos, d: string, exitPrice: number, reason: PositionOut["exitReason"]) => {
       const o = p.out;
       o.exitDate = d;
@@ -453,9 +464,9 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       o.exitReason = reason;
       o.closeMonth = monthOf(d);
       const amt = o.side === "long" ? o.quantity * exitPrice : -o.quantity * exitPrice;
-      addCash(o.currency, amt, d, "trade", `${reason === "stop" ? "stop" : reason === "stop_loss" ? "stop loss" : "close"} ${o.side} ${o.quantity} ${o.symbol} @ ${exitPrice}`);
+      addCash(o.currency, amt, d, "trade", `${reason === "stop" ? "stop" : reason === "stop_loss" ? "stop loss" : reason === "take_profit" ? "take profit" : "close"} ${o.side} ${o.quantity} ${o.symbol} @ ${exitPrice}`);
       open.splice(open.indexOf(p), 1);
-      if (reason !== "change") activeStop.delete(o.symbol);
+      if (reason !== "change") { activeStop.delete(o.symbol); activeTake.delete(o.symbol); }
     };
     const openPos = (ord: Order, side: Side, qty: number, d: string, p: number) => {
       const c = ccyOf.get(ord.symbol)!;
@@ -487,7 +498,7 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
 
     for (const d of days) {
       // stops that take effect at today's close
-      for (const x of stopsOn.get(d) ?? []) setStop(x.symbol, x.stopPrice);
+      for (const x of stopsOn.get(d) ?? []) setStop(x);
       // a) positions held from before today: splits, dividends (holder of record keeps the
       //    dividend even if it sells today), then the stop on shorts. The stop runs BEFORE
       //    orders so that a loss can never exceed the threshold (Art. 7), even on gaps.
@@ -520,6 +531,13 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
         const c = closeOn(o.symbol, d);
         if (sl !== undefined && c !== undefined && (o.side === "long" ? c <= sl + 1e-12 : c >= sl - 1e-12)) {
           closePos(p, d, c, "stop_loss");
+          ops += 1;
+          continue;
+        }
+        // the member's take profit: closed at today's close when it reaches the target
+        const tp = activeTake.get(o.symbol);
+        if (tp !== undefined && c !== undefined && (o.side === "long" ? c >= tp - 1e-12 : c <= tp + 1e-12)) {
+          closePos(p, d, c, "take_profit");
           ops += 1;
         }
       }
@@ -575,7 +593,8 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
           ops += 1;
           // a new position starts without a stop, except stops set after its order for this close
           activeStop.delete(o.symbol);
-          for (const x of stopsOn.get(d) ?? []) if (x.symbol === o.symbol && x.createdAt >= o.createdAt) setStop(x.symbol, x.stopPrice);
+          activeTake.delete(o.symbol);
+          for (const x of stopsOn.get(d) ?? []) if (x.symbol === o.symbol && x.createdAt >= o.createdAt) setStop(x);
         }
         st.status = "executed";
         st.executedDate = d;
@@ -630,7 +649,10 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       return nav;
     }
 
-    for (const p of open) p.out.stopLoss = activeStop.get(p.out.symbol) ?? null;
+    for (const p of open) {
+      p.out.stopLoss = activeStop.get(p.out.symbol) ?? null;
+      p.out.takeProfit = activeTake.get(p.out.symbol) ?? null;
+    }
 
     // month 0
     out.navMonthly.push({ teamId: team.id, monthN: 0, valuationDate: S.startDate, navEur: S.capital });
@@ -831,8 +853,11 @@ export function runChallenge(input: EngineInput, asOfRequested: string): EngineO
   const carriedIds = new Set(carried.map((c) => c.id));
   // the stop losses active at the end of the practice stay on the carried positions
   const carriedStops: StopRow[] = practice.positions
-    .filter((p) => p.exitDate === null && p.stopLoss)
-    .map((p) => ({ teamId: p.teamId, symbol: p.symbol, stopPrice: p.stopLoss!, createdAt: "0000-01-01T00:00:01Z", effDate: S.startDate }));
+    .filter((p) => p.exitDate === null)
+    .flatMap((p) => [
+      ...(p.stopLoss ? [{ teamId: p.teamId, symbol: p.symbol, kind: "stop" as const, stopPrice: p.stopLoss, createdAt: "0000-01-01T00:00:01Z", effDate: S.startDate }] : []),
+      ...(p.takeProfit ? [{ teamId: p.teamId, symbol: p.symbol, kind: "take" as const, stopPrice: p.takeProfit, createdAt: "0000-01-01T00:00:01Z", effDate: S.startDate }] : []),
+    ]);
   const official = runEngine({
     ...input,
     settings: { ...S, practiceStartDate: null },

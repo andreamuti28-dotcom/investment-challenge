@@ -4,7 +4,7 @@ import { date, dateTime, num, pct, signClass } from "../lib/format";
 import { Loading, Notice } from "./ui";
 
 const ACTION: Record<string, string> = { open: "Open", close: "Close", change: "Change quantity" };
-const WHY: Record<string, string> = { order: "closed", change: "resized", stop: "stop +50%", stop_loss: "stop loss" };
+const WHY: Record<string, string> = { order: "closed", change: "resized", stop: "stop +50%", stop_loss: "stop loss", take_profit: "take profit" };
 
 /** The stocks a participant opened and every move they made (executed orders are public). */
 export default function PersonActivity({ userId, own = false }: { userId: string; own?: boolean }) {

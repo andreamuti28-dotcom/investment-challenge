@@ -65,3 +65,26 @@ test("the stop set during the practice stays on the carried position", () => {
   assert.equal(pos.exitReason, "stop_loss");
   assert.equal(pos.exitDate, "2026-12-03");
 });
+
+test("take profit closes a long at the first close at or above the target", () => {
+  const r = runChallenge(input([o("a", "2026-12-01", "2026-12-01T09:00:00Z", "ENI.MI", "open", "long", 1000)],
+    [{ ...s("2026-12-01", "2026-12-01T09:01:00Z", "ENI.MI", 11.5), kind: "take" }, s("2026-12-01", "2026-12-01T09:02:00Z", "ENI.MI", 8)]), "2026-12-04");
+  assert.equal(r.positions[0].exitReason, "take_profit");
+  assert.equal(r.positions[0].exitDate, "2026-12-04");
+  assert.equal(r.positions[0].exitPrice, 12);
+});
+
+test("a short take profit triggers at or below the target", () => {
+  const r = runChallenge(input([o("a", "2026-12-01", "2026-12-01T09:00:00Z", "ENI.MI", "open", "short", 100)],
+    [{ ...s("2026-12-01", "2026-12-01T09:01:00Z", "ENI.MI", 9), kind: "take" }]), "2026-12-04");
+  assert.equal(r.positions[0].exitReason, "take_profit");
+  assert.equal(r.positions[0].exitDate, "2026-12-03");
+});
+
+test("FX parity: every currency counts 1:1 with the euro", () => {
+  const i = input([], []);
+  i.settings.fxParity = true;
+  const r = runChallenge(i, "2026-12-04");
+  assert.equal(r.benchmarkDaily[0].valueEur, 1_000_000);
+  assert.ok(r.warnings.every((w) => !/ECB/.test(w)));
+});

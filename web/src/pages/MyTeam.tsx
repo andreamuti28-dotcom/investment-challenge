@@ -49,11 +49,12 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
       must(supabase.from("instruments").select("symbol,name,exchange,currency,last_price,last_price_at")),
       must(supabase.from("fx_rates").select("currency,date,rate").order("date", { ascending: false }).limit(400)),
       supabase.rpc("team_ownership", { p_team: team.id }),
-      supabase.rpc("team_stops", { p_team: team.id }),
+      supabase.rpc("team_exits", { p_team: team.id }),
     ]);
     const o = (own.data ?? {}) as { holdings?: { symbol: string; by: string; mine: boolean }[]; orders?: { id: string; by: string; mine: boolean }[]; split?: boolean };
     const fxLatest: Record<string, number> = { EUR: 1 };
-    for (const r of fx as any[]) if (!(r.currency in fxLatest)) fxLatest[r.currency] = Number(r.rate);
+    const parity = !!(cal as any).settings?.fx_parity;
+    for (const r of fx as any[]) if (!(r.currency in fxLatest)) fxLatest[r.currency] = parity ? 1 : Number(r.rate);
     return {
       ...cal,
       positions: pos as Position[],
@@ -70,7 +71,9 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
       owners: Object.fromEntries((o.holdings ?? []).map((h) => [h.symbol, h])) as Record<string, { by: string; mine: boolean }>,
       orderBy: Object.fromEntries((o.orders ?? []).map((h) => [h.id, h])) as Record<string, { by: string; mine: boolean }>,
       split: o.split ?? true,
-      stops: Object.fromEntries(((stops.data ?? []) as any[]).map((x) => [x.symbol, { price: Number(x.stop_price), from: x.exec_date as string, by: x.set_by as string }])) as Record<string, StopInfo>,
+      stops: Object.fromEntries(((stops.data ?? []) as any[]).filter((x) => x.kind === "stop").map((x) => [x.symbol, { price: Number(x.price), from: x.exec_date as string, by: x.set_by as string }])) as Record<string, StopInfo>,
+      takes: Object.fromEntries(((stops.data ?? []) as any[]).filter((x) => x.kind === "take").map((x) => [x.symbol, { price: Number(x.price), from: x.exec_date as string, by: x.set_by as string }])) as Record<string, StopInfo>,
+      parity,
     };
   }, [team?.id]);
 
@@ -103,8 +106,9 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
 type StopInfo = { price: number; from: string; by: string };
 
 /** Stop loss of a position: shows it and, for the member who owns the position, lets them set, change or remove it. */
-function StopLossCell({ d, symbol, side, lastPrice, reload }: { d: any; symbol: string; side: string; lastPrice: number | null; reload: () => Promise<void> }) {
-  const cur: StopInfo | undefined = d.stops[symbol];
+function StopLossCell({ d, symbol, side, lastPrice, reload, kind = "stop" }: { d: any; symbol: string; side: string; lastPrice: number | null; reload: () => Promise<void>; kind?: "stop" | "take" }) {
+  const cur: StopInfo | undefined = (kind === "take" ? d.takes : d.stops)[symbol];
+  const below = (side === "long") === (kind === "stop");
   const mine = d.adminView || d.owners[symbol]?.mine;
   const [edit, setEdit] = useState(false);
   const [v, setV] = useState("");
@@ -112,14 +116,14 @@ function StopLossCell({ d, symbol, side, lastPrice, reload }: { d: any; symbol: 
   const [busy, setBusy] = useState(false);
   const save = async (price: number | null) => {
     setBusy(true); setErr(null);
-    const { error } = await supabase.rpc("set_stop_loss", { p_team: d.teamId, p_symbol: symbol, p_price: price });
+    const { error } = await supabase.rpc(kind === "take" ? "set_take_profit" : "set_stop_loss", { p_team: d.teamId, p_symbol: symbol, p_price: price });
     setBusy(false);
     if (error) return setErr(errText(error));
     setEdit(false); await reload();
   };
   if (edit) return (
     <form className="stop-edit" onSubmit={(e) => { e.preventDefault(); const n = Number(v.replace(",", ".")); if (n > 0) save(n); else setErr("Enter a price above zero"); }} onClick={(e) => e.stopPropagation()}>
-      <input autoFocus inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder={lastPrice ? (side === "long" ? `below ${num(lastPrice, 2)}` : `above ${num(lastPrice, 2)}`) : "price"} aria-label={`Stop loss for ${symbol}`} />
+      <input autoFocus inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder={lastPrice ? (below ? `below ${num(lastPrice, 2)}` : `above ${num(lastPrice, 2)}`) : "price"} aria-label={`${kind === "take" ? "Take profit" : "Stop loss"} for ${symbol}`} />
       <button type="submit" className="small" disabled={busy}>Save</button>
       {cur && <button type="button" className="danger small" disabled={busy} onClick={() => save(null)}>Remove</button>}
       <button type="button" className="secondary small" onClick={() => { setEdit(false); setErr(null); }}>×</button>
@@ -176,7 +180,7 @@ function Portfolio({ d, reload }: { d: any; reload: () => Promise<void> }) {
         {open.length === 0 ? <p className="muted">No open positions.</p> : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Ccy</th><th>Entry</th><th className="num">Entry price</th><th className="num">Last price</th><th className="num">Value (EUR)</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th><th>Stop loss</th><th /></tr></thead>
+              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Ccy</th><th>Entry</th><th className="num">Entry price</th><th className="num">Last price</th><th className="num">Value (EUR)</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th><th>Stop loss</th><th>Take profit</th><th /></tr></thead>
               <tbody>
                 {open.map((p) => (
                   <Fragment key={p.id}>
@@ -192,10 +196,11 @@ function Portfolio({ d, reload }: { d: any; reload: () => Promise<void> }) {
                       <StopLossCell d={d} symbol={p.symbol} side={p.side} lastPrice={p.last_price != null ? Number(p.last_price) : null} reload={reload} />
                       {p.side === "short" && <div className="muted small" title="Automatic stop on shorts">auto {num(Number(p.entry_price) * (1 + Number(d.settings.stop_threshold)), 4)}</div>}
                     </td>
+                    <td><StopLossCell kind="take" d={d} symbol={p.symbol} side={p.side} lastPrice={p.last_price != null ? Number(p.last_price) : null} reload={reload} /></td>
                     <td><button className="secondary small chart-toggle" aria-expanded={chart === p.id}>{chart === p.id ? "Hide chart" : "Chart"}</button></td>
                   </tr>
                   {chart === p.id && (
-                    <tr className="chart-row"><td colSpan={12}><RowDetail><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></RowDetail></td></tr>
+                    <tr className="chart-row"><td colSpan={13}><RowDetail><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></RowDetail></td></tr>
                   )}
                   </Fragment>
                 ))}
@@ -253,6 +258,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const [side, setSide] = useState<"long" | "short">("long");
   const [qty, setQty] = useState("");
   const [stop, setStop] = useState("");
+  const [take, setTake] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "err" | "warn"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   // how many different stocks this member holds, against the team's per-member limit
@@ -298,7 +304,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     setBusy(true); setMsg(null);
     try {
       const r = await callFunction("market-data", { action: "validate", symbol });
-      setSel({ symbol: r.instrument.symbol, name: r.instrument.name, exchange: r.instrument.exchange, currency: r.instrument.currency, lastPrice: r.lastClose?.close ?? r.lastPrice ?? null, closeDate: r.lastClose?.date ?? null, fx: r.fxRate ?? d.fxLatest[r.instrument.currency] ?? null });
+      setSel({ symbol: r.instrument.symbol, name: r.instrument.name, exchange: r.instrument.exchange, currency: r.instrument.currency, lastPrice: r.lastClose?.close ?? r.lastPrice ?? null, closeDate: r.lastClose?.date ?? null, fx: d.parity ? 1 : r.fxRate ?? d.fxLatest[r.instrument.currency] ?? null });
       const h = held.get(r.instrument.symbol);
       setAction(h ? "change" : "open");
       if (h) { setSide(h.side as any); setQty(String(h.quantity)); } else setQty("");
@@ -332,12 +338,17 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
       const r = await supabase.rpc("set_stop_loss", { p_team: d.teamId, p_symbol: sel.symbol, p_price: stopN });
       stopNote = r.error ? ` The stop loss was NOT set: ${errText(r.error)}` : ` Stop loss at ${num(stopN, stopN < 10 ? 4 : 2)} ${sel.currency}.`;
     }
+    const takeN = Number(take.replace(",", "."));
+    if (action !== "close" && take.trim() && takeN > 0) {
+      const r = await supabase.rpc("set_take_profit", { p_team: d.teamId, p_symbol: sel.symbol, p_price: takeN });
+      stopNote += r.error ? ` The take profit was NOT set: ${errText(r.error)}` : ` Take profit at ${num(takeN, takeN < 10 ? 4 : 2)} ${sel.currency}.`;
+    }
     setBusy(false);
     setMsg({
       kind: stopNote.includes("NOT") ? "warn" : "ok",
       text: `Order saved: ${describe(action, side, qty, sel.symbol, held.get(sel.symbol)?.side)}. It will be executed at the closing price of ${date(o.exec_date)}. You can cancel it until ${dateTime(o.cutoff_at)}.${stopNote}`,
     });
-    setSel(null); setQty(""); setStop(""); setQuery(""); setTiming(null);
+    setSel(null); setQty(""); setStop(""); setTake(""); setQuery(""); setTiming(null);
     usage.reload();
     budget.reload();
     await reload();
@@ -366,7 +377,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
         exchange, with no commissions. Orders placed after that exchange has closed, or at the weekend, are executed at the close of the next
         trading day. Until the close you can cancel or replace
         an order. A short is closed automatically if the price rises {pct(d.settings.stop_threshold, 0).replace("+", "")} above entry.
-        You can also set your own <b>stop loss</b> on each of your positions. Each member manages only the positions they opened.
+        You can also set your own <b>stop loss</b> and <b>take profit</b> on each of your positions. Each member manages only the positions they opened.
       </Notice>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
 
@@ -494,6 +505,13 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                     {side === "long" ? "If the stock closes at or below this price" : "If the stock closes at or above this price"}, the position is closed at that day's close.
                     {d.stops[sel.symbol] ? ` Current stop: ${num(d.stops[sel.symbol].price, 4)} (left as it is if you leave this empty).` : ""}
                   </p>
+                  <label htmlFor="take" style={{ marginTop: 10 }}>Take profit (optional, price in {ccy || "the stock's currency"})</label>
+                  <input id="take" inputMode="decimal" value={take} onChange={(e) => setTake(e.target.value.replace(/[^0-9.,]/g, ""))}
+                    placeholder={sel.lastPrice ? (side === "long" ? `e.g. ${num(sel.lastPrice * 1.2, 2)} (20% above)` : `e.g. ${num(sel.lastPrice * 0.8, 2)} (20% below)`) : "price"} />
+                  <p className="small muted" style={{ margin: "4px 0 0" }}>
+                    {side === "long" ? "If the stock closes at or above this price" : "If the stock closes at or below this price"}, the position is closed at that day's close to lock in the gain.
+                    {d.takes[sel.symbol] ? ` Current take profit: ${num(d.takes[sel.symbol].price, 4)} (left as it is if you leave this empty).` : ""}
+                  </p>
                 </div>
               )}
               {!locked && indicative !== null && action !== "close" && (
@@ -516,7 +534,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
               )}
               <div className="row">
                 {!locked && <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>{describe(action, side, qty ? num(Number(qty), 0) : "…", sel.symbol, held.get(sel.symbol)?.side)}</button>}
-                <button className="secondary" onClick={() => { setSel(null); setTiming(null); setStop(""); }}>{locked ? "Close" : "Cancel"}</button>
+                <button className="secondary" onClick={() => { setSel(null); setTiming(null); setStop(""); setTake(""); }}>{locked ? "Close" : "Cancel"}</button>
               </div>
             </div>
           )}
@@ -550,7 +568,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
           <h3 style={{ marginTop: 20 }}>Holdings</h3>
           {held.size === 0 ? <p className="muted">No holdings yet.</p> : (
             <div className="table-wrap"><table>
-              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>By</th><th>Stop loss</th><th /></tr></thead>
+              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>By</th><th>Stop loss</th><th>Take profit</th><th /></tr></thead>
               <tbody>{[...held].map(([s, h]) => {
                 const mine = d.adminView || d.owners[s]?.mine;
                 const pos = (d.positions as Position[]).find((p) => p.symbol === s && !p.exit_date);
@@ -559,6 +577,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                 <tr key={s}><td>{s}{h.pending && <span className="badge pending" style={{ marginLeft: 6 }}>pending</span>}</td><td><span className={`badge ${h.side}`}>{h.side}</span></td><td className="num">{num(h.quantity, 0)}</td>
                   <td className="small">{mine && !d.adminView ? "you" : d.owners[s]?.by ?? "–"}</td>
                   <td><StopLossCell d={d} symbol={s} side={h.side} lastPrice={lp} reload={reload} /></td>
+                  <td><StopLossCell kind="take" d={d} symbol={s} side={h.side} lastPrice={lp} reload={reload} /></td>
                   <td>{mine ? <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}><button className="secondary small" onClick={() => prefill(s, "change")}>Change</button><button className="secondary small" onClick={() => prefill(s, "close")}>Close</button></span> : <span className="muted small">only {d.owners[s]?.by ?? "its owner"}</span>}</td></tr>
                 );
               })}</tbody>
@@ -596,7 +615,7 @@ function History({ d }: { d: any }) {
               <Fragment key={p.id}>
               <tr className="clickable" onClick={() => setChart(chart === p.id ? null : p.id)}><td>{p.symbol}</td><td><span className={`badge ${p.side}`}>{p.side}</span></td><td className="num">{num(p.quantity, 0)}</td>
                 <td>{date(p.entry_date)}</td><td className="num">{num(p.entry_price, 4)}</td><td>{date(p.exit_date)}</td><td className="num">{num(p.exit_price, 4)}</td>
-                <td>{p.exit_reason === "stop" ? <span className="badge rejected">stop -50%</span> : p.exit_reason === "stop_loss" ? <span className="badge rejected">stop loss</span> : p.exit_reason}</td>
+                <td>{p.exit_reason === "stop" ? <span className="badge rejected">stop -50%</span> : p.exit_reason === "stop_loss" ? <span className="badge rejected">stop loss</span> : p.exit_reason === "take_profit" ? <span className="badge executed">take profit</span> : p.exit_reason}</td>
                 <td className={`num ${signClass(p.pnl_local)}`}>{num(p.pnl_local)}</td><td className={`num ${signClass(p.pnl_eur)}`}>{eur(p.pnl_eur)}</td>
                 <td><button className="secondary small chart-toggle">{chart === p.id ? "Hide chart" : "Chart"}</button></td></tr>
               {chart === p.id && <tr className="chart-row"><td colSpan={11}><RowDetail><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></RowDetail></td></tr>}

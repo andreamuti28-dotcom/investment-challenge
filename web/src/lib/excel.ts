@@ -506,7 +506,7 @@ export async function buildWorkbook(x: ExportData, Excel: typeof ExcelJS): Promi
   {
     const ws = wb.addWorksheet("Closed positions");
     const rows = x.positions.filter((p) => p.exit_date).sort((a, b) => teamName(a.team_id).localeCompare(teamName(b.team_id)) || a.exit_date.localeCompare(b.exit_date));
-    const reason: Record<string, string> = { order: "Closed by order", change: "Quantity changed", stop: "Stop at +50%", stop_loss: "Stop loss" };
+    const reason: Record<string, string> = { order: "Closed by order", change: "Quantity changed", stop: "Stop at +50%", stop_loss: "Stop loss", take_profit: "Take profit" };
     const cols: Col<any>[] = [
       ...(one ? [] : [{ key: "team", header: "Team", width: 26, value: (p: any) => teamName(p.team_id), bold: true } as Col<any>]),
       { key: "sym", header: "Stock", width: 13, value: (p) => p.symbol, bold: !!one },

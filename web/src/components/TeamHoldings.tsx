@@ -21,7 +21,7 @@ export function TeamHoldings({ teamId }: { teamId: string }) {
     const exit = p.exit_date ? Number(p.exit_price) : Number(p.last_price);
     return Number(p.entry_price) ? (p.side === "long" ? 1 : -1) * (exit / Number(p.entry_price) - 1) : null;
   };
-  const why: Record<string, string> = { order: "closed", change: "resized", stop: "stop +50%", stop_loss: "stop loss" };
+  const why: Record<string, string> = { order: "closed", change: "resized", stop: "stop +50%", stop_loss: "stop loss", take_profit: "take profit" };
   return (
     <div className="holdings">
       <div className="row" style={{ gap: 6, marginBottom: 8 }}>

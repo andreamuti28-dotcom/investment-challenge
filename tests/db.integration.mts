@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql", "20261021140000_organiser_linkedin.sql", "20261022100000_registration_notice.sql", "20261022120000_partners.sql", "20261022140000_ownership_budget_stoploss.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql", "20261021140000_organiser_linkedin.sql", "20261022100000_registration_notice.sql", "20261022120000_partners.sql", "20261022140000_ownership_budget_stoploss.sql", "20261022160000_sponsor_takeprofit_parity.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -382,6 +382,16 @@ ok("engine reads the stop losses", Array.isArray(ein.j) && ein.j.length === 2, J
 const own = (await as("authenticated", UB, `select team_ownership('${A3}') j`)).rows[0] as any;
 const h1 = own.j.holdings.find((x: any) => x.symbol === "BUD1.MI");
 ok("ownership shows who holds what", h1?.by === "A" && h1?.mine === false && own.j.orders.some((o: any) => o.by === "A" && !o.mine), JSON.stringify(own.j));
+await expectErr("long take profit must be above the price", () => as("authenticated", UA, `select set_take_profit('${A3}','BUD1.MI',9)`), /above the last price/);
+await as("authenticated", UA, `select set_take_profit('${A3}','BUD1.MI',12)`);
+const tpx = await as("authenticated", UB, `select symbol, kind, price::float p from team_exits('${A3}')`);
+ok("take profit listed", tpx.rows.some((r: any) => r.kind === "take" && r.p === 12) && (await as("authenticated", UB, `select * from team_stops('${A3}')`)).rows.length === 0, JSON.stringify(tpx.rows));
+await expectErr("another member cannot set my take profit", () => as("authenticated", UB, `select set_take_profit('${A3}','BUD1.MI',13)`), /belongs to A/);
+const fx0 = ((await db.query(`select fx_now('USD')::float r`)).rows[0] as any).r;
+await db.exec(`update challenge_settings set fx_parity = true where id = 1`);
+const fx1 = ((await db.query(`select fx_now('USD')::float r`)).rows[0] as any).r;
+await db.exec(`update challenge_settings set fx_parity = false where id = 1`);
+ok("FX parity forces 1:1", fx0 === 1.1 && fx1 === 1, `${fx0} ${fx1}`);
 await expectErr("only the president switches the budget split", () => as("authenticated", UB, `select set_budget_split('${A3}', false)`), /Only the president/);
 await as("authenticated", ADMIN, `select set_membership_admin('${UC}', '${A3}', 'president')`);
 await as("authenticated", UC, `select set_budget_split('${A3}', false)`);

@@ -38,6 +38,7 @@ export function toEngineInput(db: any): EngineInput {
       startDate: s.start_date,
       endDate: s.end_date,
       practiceStartDate: s.practice_start_date ?? null,
+      fxParity: s.fx_parity === true,
     },
     // the calendar follows the start and end dates set in the admin panel
     months: generateMonths(s.start_date, s.end_date),
@@ -70,6 +71,7 @@ export function toEngineInput(db: any): EngineInput {
     stops: (db.stops ?? []).map((x: any) => ({
       teamId: x.team_id,
       symbol: x.symbol,
+      kind: x.kind === "take" ? "take" : "stop",
       stopPrice: num(x.stop_price),
       createdAt: x.created_at,
       effDate: x.exec_date,
@@ -170,7 +172,7 @@ export async function runOnce(
     const out: EngineOutput = runChallenge(input, asOf);
     warnings.push(...out.warnings);
     const executed = out.orderUpdates.filter((o) => o.status === "executed").length;
-    const stops = out.positions.filter((p) => p.exitReason === "stop" || p.exitReason === "stop_loss").length;
+    const stops = out.positions.filter((p) => p.exitReason === "stop" || p.exitReason === "stop_loss" || p.exitReason === "take_profit").length;
     L(`replay as of ${asOf}: ${input.teams.length} teams, ${out.positions.length} positions, ${executed} orders executed, ${stops} stop-outs`);
 
     await rpc(env, "engine_write", { p: out });

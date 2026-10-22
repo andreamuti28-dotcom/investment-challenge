@@ -7,7 +7,6 @@ import { supabase } from "../lib/supabase";
 import { logoSrc, type Partner } from "../lib/partners";
 import { useEdition } from "../lib/edition";
 
-const SPONSOR_URL = "https://wefocusbuddy.com/a";
 const ORGANISER_URL_FALLBACK = "https://www.linkedin.com/in/andrea-muti-24416b2a1";
 
 
@@ -42,7 +41,7 @@ function Partners() {
 
 function SponsorCard() {
   return (
-    <a className="sponsor-card call" href={SPONSOR_URL} target="_blank" rel="noreferrer" aria-label="WeFocusBuddy, official sponsor: free with a university e-mail. Get free access">
+    <a className="sponsor-card call" href={useEdition().sponsorUrl} target="_blank" rel="noreferrer" aria-label="WeFocusBuddy, official sponsor: free with a university e-mail. Get free access">
       <span className="sc-top"><span className="sc-free">Free with a university e-mail</span><span className="sc-eyebrow">Official sponsor</span></span>
       <span className="sc-main">
         <span className="sc-body">
@@ -163,7 +162,7 @@ export default function Home() {
             <p>One-to-one online coworking sessions to study and work with focus: you book a slot, meet another student on video, say what you will do and get it done together. The partner of the {ed.long} edition.</p>
             <p className="sponsor-free"><span>Free</span> for everyone who signs up with a university e-mail.</p>
           </div>
-          <a className="btn" href={SPONSOR_URL} target="_blank" rel="noreferrer">Get free access ↗</a>
+          <a className="btn" href={ed.sponsorUrl} target="_blank" rel="noreferrer">Get free access ↗</a>
         </div>
       </section>
 
