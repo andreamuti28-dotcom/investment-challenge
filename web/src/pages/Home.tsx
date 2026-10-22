@@ -12,7 +12,6 @@ const ORGANISER_URL_FALLBACK = "https://www.linkedin.com/in/andrea-muti-24416b2a
 /** Logos of the participating associations: add { name, logo, url } entries (logo files in web/public/partners/). */
 const PARTNERS: { name: string; short: string; logo: string; url?: string }[] = [
   { name: "EFDS Society - Imperial College London", short: "EFDS Society - Imperial College London", logo: "imperial.png" },
-  { name: "Starting Finance Club Guido Carli - Luiss University", short: "Starting Finance Club Guido Carli - Luiss University", logo: "guido-carli.png" },
   { name: "Financial Study Association Amsterdam", short: "Financial Study Association Amsterdam", logo: "amsterdam.png" },
   { name: "Starting Finance Club Bicocca - Milano Bicocca", short: "Starting Finance Club Bicocca - Milano Bicocca", logo: "bicocca.png" },
 ];
