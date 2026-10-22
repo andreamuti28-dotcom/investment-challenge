@@ -67,6 +67,13 @@ export function toEngineInput(db: any): EngineInput {
     prices: db.prices.map((p: any[]) => ({ symbol: p[0], date: p[1], close: Number(p[2]), source: p[3] })),
     events: db.events.map((e: any) => ({ symbol: e.symbol, date: e.date, type: e.type, value: Number(e.value), source: e.source })),
     fx: db.fx.map((f: any[]) => ({ currency: f[0], date: f[1], rate: Number(f[2]), source: f[3] })),
+    stops: (db.stops ?? []).map((x: any) => ({
+      teamId: x.team_id,
+      symbol: x.symbol,
+      stopPrice: num(x.stop_price),
+      createdAt: x.created_at,
+      effDate: x.exec_date,
+    })),
   };
 }
 
@@ -163,7 +170,7 @@ export async function runOnce(
     const out: EngineOutput = runChallenge(input, asOf);
     warnings.push(...out.warnings);
     const executed = out.orderUpdates.filter((o) => o.status === "executed").length;
-    const stops = out.positions.filter((p) => p.exitReason === "stop").length;
+    const stops = out.positions.filter((p) => p.exitReason === "stop" || p.exitReason === "stop_loss").length;
     L(`replay as of ${asOf}: ${input.teams.length} teams, ${out.positions.length} positions, ${executed} orders executed, ${stops} stop-outs`);
 
     await rpc(env, "engine_write", { p: out });

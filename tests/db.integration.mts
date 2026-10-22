@@ -20,7 +20,7 @@ await db.exec(`
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
 `);
-for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql", "20261021140000_organiser_linkedin.sql", "20261022100000_registration_notice.sql", "20261022120000_partners.sql"]) {
+for (const m of ["20261020000000_init.sql", "20261020120000_daily_close_access_codes.sql", "20261020150000_president_member.sql", "20261020160000_calendar_from_dates.sql", "20261020170000_admin_orders.sql", "20261020180000_no_currency_transfers.sql", "20261020190000_public_positions.sql", "20261020200000_edition_password_requests.sql", "20261020210000_mail_key_vault.sql", "20261020220000_self_registration.sql", "20261020230000_two_competitions_chat.sql", "20261020240000_member_stock_limit.sql", "20261020250000_profiles_participants.sql", "20261021100000_practice_budget.sql", "20261021120000_team_linkedin.sql", "20261021130000_competition_c.sql", "20261021140000_organiser_linkedin.sql", "20261022100000_registration_notice.sql", "20261022120000_partners.sql", "20261022140000_ownership_budget_stoploss.sql"]) {
   await db.exec(readFileSync(new URL(`../supabase/migrations/${m}`, import.meta.url), "utf8"));
 }
 await db.exec(`
@@ -366,6 +366,28 @@ const b1 = await as("authenticated", UA, `select my_budget('${A3}') j`);
 ok("budget shrinks when members join", Math.abs(Number((b1.rows[0] as any).j.limit) - 333333.33) < 0.01 && Number((b1.rows[0] as any).j.used) === 440000, JSON.stringify(b1.rows[0]));
 await as("authenticated", ADMIN, `select place_order_admin('${A3}','BUD2','close',null,null)`).catch(() => {});
 ok("organiser is not subject to the budget", (await as("authenticated", ADMIN, `select (place_order_admin('${A3}','SPY','open','long',1)).id`).catch((e) => ({ rows: [{ err: String(e) }] }))).rows.length === 1);
+// each member manages only their own positions; stop loss; budget split switch
+await expectErr("another member cannot touch my order", () => as("authenticated", UB, `select place_order_in('${A3}','BUD1.MI','close',null,null)`), /A already has an order pending on BUD1\.MI/);
+const myOrd = ((await db.query(`select id from orders where team_id = '${A3}' and symbol = 'BUD1.MI' and status = 'pending'`)).rows[0] as any).id;
+await expectErr("another member cannot cancel my order", () => as("authenticated", UB, `select cancel_order('${myOrd}')`), /placed by A/);
+await expectErr("another member cannot set my stop loss", () => as("authenticated", UB, `select set_stop_loss('${A3}','BUD1.MI',9)`), /belongs to A/);
+await expectErr("long stop must be below the price", () => as("authenticated", UA, `select set_stop_loss('${A3}','BUD1.MI',11)`), /below the last price/);
+await as("authenticated", UA, `select set_stop_loss('${A3}','BUD1.MI',9)`);
+const stl = await as("authenticated", UB, `select symbol, stop_price::float s, set_by from team_stops('${A3}')`);
+ok("team sees the stop loss and who set it", (stl.rows[0] as any)?.s === 9 && (stl.rows[0] as any)?.set_by === "A", JSON.stringify(stl.rows));
+await as("authenticated", UA, `select set_stop_loss('${A3}','BUD1.MI',null)`);
+ok("stop loss removed", (await as("authenticated", UA, `select * from team_stops('${A3}')`)).rows.length === 0);
+const ein = (await db.query(`select engine_input()->'stops' j`)).rows[0] as any;
+ok("engine reads the stop losses", Array.isArray(ein.j) && ein.j.length === 2, JSON.stringify(ein.j));
+const own = (await as("authenticated", UB, `select team_ownership('${A3}') j`)).rows[0] as any;
+const h1 = own.j.holdings.find((x: any) => x.symbol === "BUD1.MI");
+ok("ownership shows who holds what", h1?.by === "A" && h1?.mine === false && own.j.orders.some((o: any) => o.by === "A" && !o.mine), JSON.stringify(own.j));
+await expectErr("only the president switches the budget split", () => as("authenticated", UB, `select set_budget_split('${A3}', false)`), /Only the president/);
+await as("authenticated", ADMIN, `select set_membership_admin('${UC}', '${A3}', 'president')`);
+await as("authenticated", UC, `select set_budget_split('${A3}', false)`);
+const b2 = await as("authenticated", UA, `select my_budget('${A3}') j`);
+ok("without the split each member can use the whole team value", (b2.rows[0] as any).j.split === false && Number((b2.rows[0] as any).j.limit) === 1000000, JSON.stringify(b2.rows[0]));
+await as("authenticated", UC, `select set_budget_split('${A3}', true)`);
 // practice period: orders executed from the practice start instead of the official start
 await db.exec(`update challenge_settings set start_date = '2026-12-01', practice_start_date = null where id = 1`);
 const t0 = await db.query(`select exec_date::text d from next_close('2026-10-21 10:00+02', 'Europe/Rome', '17:30')`);

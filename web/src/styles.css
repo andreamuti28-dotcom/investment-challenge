@@ -727,3 +727,11 @@ td.strong { font-weight: 600; }
 .partner-form label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
 .partner-form label.check input { width: 18px; min-height: 0; }
 @media (max-width: 640px) { .partner-form .pf-grid { grid-template-columns: 1fr; } .partner-admin { flex-wrap: wrap; } .partner-admin .pa-actions { width: 100%; justify-content: flex-start; } }
+
+/* stop loss and budget switch */
+.stop-cell { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.stop-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 220px; }
+.stop-edit input { width: 110px; min-height: 32px; padding: 4px 8px; }
+.stop-row input { max-width: 260px; }
+.switch-row { display: flex; align-items: center; gap: 10px; font-weight: 400; cursor: pointer; }
+.switch-row input { width: 18px; min-height: 0; }

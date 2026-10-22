@@ -38,7 +38,7 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
   const [tab, setTab] = useState<"portfolio" | "orders" | "history" | "chat" | "team" | "account">("portfolio");
   const q = useLoad(async () => {
     if (!team) return null;
-    const [cal, pos, sub, orders, nav, bench, met, instr, fx] = await Promise.all([
+    const [cal, pos, sub, orders, nav, bench, met, instr, fx, own, stops] = await Promise.all([
       loadCalendar(),
       must(supabase.from("positions").select("*").eq("team_id", team.id).order("entry_date")),
       must(supabase.from("subportfolios").select("*").eq("team_id", team.id)),
@@ -48,7 +48,10 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
       supabase.from("leaderboard").select("*").eq("team_id", team!.id).maybeSingle(),
       must(supabase.from("instruments").select("symbol,name,exchange,currency,last_price,last_price_at")),
       must(supabase.from("fx_rates").select("currency,date,rate").order("date", { ascending: false }).limit(400)),
+      supabase.rpc("team_ownership", { p_team: team.id }),
+      supabase.rpc("team_stops", { p_team: team.id }),
     ]);
+    const o = (own.data ?? {}) as { holdings?: { symbol: string; by: string; mine: boolean }[]; orders?: { id: string; by: string; mine: boolean }[]; split?: boolean };
     const fxLatest: Record<string, number> = { EUR: 1 };
     for (const r of fx as any[]) if (!(r.currency in fxLatest)) fxLatest[r.currency] = Number(r.rate);
     return {
@@ -62,7 +65,12 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
       instruments: Object.fromEntries((instr as Instrument[]).map((i) => [i.symbol, i])) as Record<string, Instrument>,
       fxLatest,
       teamId: team.id,
+      competition: team.competition,
       adminView,
+      owners: Object.fromEntries((o.holdings ?? []).map((h) => [h.symbol, h])) as Record<string, { by: string; mine: boolean }>,
+      orderBy: Object.fromEntries((o.orders ?? []).map((h) => [h.id, h])) as Record<string, { by: string; mine: boolean }>,
+      split: o.split ?? true,
+      stops: Object.fromEntries(((stops.data ?? []) as any[]).map((x) => [x.symbol, { price: Number(x.stop_price), from: x.exec_date as string, by: x.set_by as string }])) as Record<string, StopInfo>,
     };
   }, [team?.id]);
 
@@ -82,7 +90,7 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
       <Tabs value={team.competition === "C" && (tab === "chat" || tab === "team") ? "portfolio" : tab} onChange={setTab} items={([
         ["portfolio", "Portfolio"], ["orders", "Orders"], ["history", "History"], ["chat", "Chat"], ["team", "Team"], ["account", "Account"],
       ] as [typeof tab, string][]).filter(([k]) => !(adminView && k === "account") && !(team.competition === "C" && (k === "chat" || k === "team")))} />
-      {(tab === "portfolio" || (team.competition === "C" && (tab === "chat" || tab === "team"))) && <Portfolio d={d} />}
+      {(tab === "portfolio" || (team.competition === "C" && (tab === "chat" || tab === "team"))) && <Portfolio d={d} reload={q.reload} />}
       {tab === "orders" && <Orders d={d} reload={q.reload} />}
       {tab === "history" && <History d={d} />}
       {tab === "chat" && team.competition !== "C" && <TeamChat key={team.id} teamId={team.id} teamName={team.name} />}
@@ -92,7 +100,41 @@ export default function MyTeam({ teamId }: { teamId?: string } = {}) {
   );
 }
 
-function Portfolio({ d }: { d: any }) {
+type StopInfo = { price: number; from: string; by: string };
+
+/** Stop loss of a position: shows it and, for the member who owns the position, lets them set, change or remove it. */
+function StopLossCell({ d, symbol, side, lastPrice, reload }: { d: any; symbol: string; side: string; lastPrice: number | null; reload: () => Promise<void> }) {
+  const cur: StopInfo | undefined = d.stops[symbol];
+  const mine = d.adminView || d.owners[symbol]?.mine;
+  const [edit, setEdit] = useState(false);
+  const [v, setV] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async (price: number | null) => {
+    setBusy(true); setErr(null);
+    const { error } = await supabase.rpc("set_stop_loss", { p_team: d.teamId, p_symbol: symbol, p_price: price });
+    setBusy(false);
+    if (error) return setErr(errText(error));
+    setEdit(false); await reload();
+  };
+  if (edit) return (
+    <form className="stop-edit" onSubmit={(e) => { e.preventDefault(); const n = Number(v.replace(",", ".")); if (n > 0) save(n); else setErr("Enter a price above zero"); }} onClick={(e) => e.stopPropagation()}>
+      <input autoFocus inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder={lastPrice ? (side === "long" ? `below ${num(lastPrice, 2)}` : `above ${num(lastPrice, 2)}`) : "price"} aria-label={`Stop loss for ${symbol}`} />
+      <button type="submit" className="small" disabled={busy}>Save</button>
+      {cur && <button type="button" className="danger small" disabled={busy} onClick={() => save(null)}>Remove</button>}
+      <button type="button" className="secondary small" onClick={() => { setEdit(false); setErr(null); }}>×</button>
+      {err && <div className="neg small" style={{ flexBasis: "100%" }}>{err}</div>}
+    </form>
+  );
+  return (
+    <span className="stop-cell" onClick={(e) => e.stopPropagation()}>
+      {cur ? <b title={`Set by ${cur.by}, active from the close of ${date(cur.from)}`}>{num(cur.price, cur.price < 10 ? 4 : 2)}</b> : <span className="muted">–</span>}
+      {mine && <button type="button" className="secondary small" onClick={() => { setV(cur ? String(cur.price) : ""); setEdit(true); }}>{cur ? "Edit" : "Set"}</button>}
+    </span>
+  );
+}
+
+function Portfolio({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const open: Position[] = d.positions.filter((p: Position) => !p.exit_date);
   const [chart, setChart] = useState<number | null>(null);
   const m = d.metrics;
@@ -134,19 +176,22 @@ function Portfolio({ d }: { d: any }) {
         {open.length === 0 ? <p className="muted">No open positions.</p> : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Ccy</th><th>Entry</th><th className="num">Entry price</th><th className="num">Last price</th><th className="num">Value (EUR)</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th><th className="num">Stop level</th><th /></tr></thead>
+              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>Ccy</th><th>Entry</th><th className="num">Entry price</th><th className="num">Last price</th><th className="num">Value (EUR)</th><th className="num">P&amp;L (local)</th><th className="num">P&amp;L (EUR)</th><th>Stop loss</th><th /></tr></thead>
               <tbody>
                 {open.map((p) => (
                   <Fragment key={p.id}>
                   <tr className="clickable" onClick={() => setChart(chart === p.id ? null : p.id)}>
-                    <td><b>{p.symbol}</b><div className="muted small">{d.instruments[p.symbol]?.name}</div></td>
+                    <td><b>{p.symbol}</b><div className="muted small">{d.instruments[p.symbol]?.name}{d.owners[p.symbol] && d.competition !== "C" ? ` · by ${d.owners[p.symbol].mine && !d.adminView ? "you" : d.owners[p.symbol].by}` : ""}</div></td>
                     <td><span className={`badge ${p.side}`}>{p.side}</span></td>
                     <td className="num">{num(p.quantity, 0)}</td><td>{p.currency}</td><td>{date(p.entry_date)}</td>
                     <td className="num">{num(p.entry_price, 4)}</td><td className="num">{num(p.last_price, 4)}</td>
                     <td className="num">{eur(p.value_eur)}</td>
                     <td className={`num ${signClass(p.pnl_local)}`}>{num(p.pnl_local)}</td>
                     <td className={`num ${signClass(p.pnl_eur)}`}>{eur(p.pnl_eur)}</td>
-                    <td className="num">{p.side === "short" ? num(Number(p.entry_price) * (1 + Number(d.settings.stop_threshold)), 4) : "–"}</td>
+                    <td>
+                      <StopLossCell d={d} symbol={p.symbol} side={p.side} lastPrice={p.last_price != null ? Number(p.last_price) : null} reload={reload} />
+                      {p.side === "short" && <div className="muted small" title="Automatic stop on shorts">auto {num(Number(p.entry_price) * (1 + Number(d.settings.stop_threshold)), 4)}</div>}
+                    </td>
                     <td><button className="secondary small chart-toggle" aria-expanded={chart === p.id}>{chart === p.id ? "Hide chart" : "Chart"}</button></td>
                   </tr>
                   {chart === p.id && (
@@ -207,6 +252,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const [action, setAction] = useState<"open" | "change" | "close">("open");
   const [side, setSide] = useState<"long" | "short">("long");
   const [qty, setQty] = useState("");
+  const [stop, setStop] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "err" | "warn"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   // how many different stocks this member holds, against the team's per-member limit
@@ -219,7 +265,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   const budget = useLoad(async () => {
     if (d.adminView) return null;
     const { data } = await supabase.rpc("my_budget", { p_team: d.teamId });
-    return data as { used: number; limit: number; nav: number; members: number; teamUsed: number } | null;
+    return data as { used: number; limit: number; nav: number; members: number; teamUsed: number; split?: boolean } | null;
   }, [d.teamId, d.orders.length]);
 
   // holdings now, plus the effect of pending orders in the order they were placed
@@ -278,14 +324,20 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
     const { data, error } = d.adminView
       ? await supabase.rpc("place_order_admin", { p_team: d.teamId, ...args })
       : await supabase.rpc("place_order_in", { p_team: d.teamId, ...args });
-    setBusy(false);
-    if (error) return setMsg({ kind: "err", text: errText(error) });
+    if (error) { setBusy(false); return setMsg({ kind: "err", text: errText(error) }); }
     const o = data as Order;
+    let stopNote = "";
+    const stopN = Number(stop.replace(",", "."));
+    if (action !== "close" && stop.trim() && stopN > 0) {
+      const r = await supabase.rpc("set_stop_loss", { p_team: d.teamId, p_symbol: sel.symbol, p_price: stopN });
+      stopNote = r.error ? ` The stop loss was NOT set: ${errText(r.error)}` : ` Stop loss at ${num(stopN, stopN < 10 ? 4 : 2)} ${sel.currency}.`;
+    }
+    setBusy(false);
     setMsg({
-      kind: "ok",
-      text: `Order saved: ${describe(action, side, qty, sel.symbol, held.get(sel.symbol)?.side)}. It will be executed at the closing price of ${date(o.exec_date)}. You can cancel it until ${dateTime(o.cutoff_at)}.`,
+      kind: stopNote.includes("NOT") ? "warn" : "ok",
+      text: `Order saved: ${describe(action, side, qty, sel.symbol, held.get(sel.symbol)?.side)}. It will be executed at the closing price of ${date(o.exec_date)}. You can cancel it until ${dateTime(o.cutoff_at)}.${stopNote}`,
     });
-    setSel(null); setQty(""); setQuery(""); setTiming(null);
+    setSel(null); setQty(""); setStop(""); setQuery(""); setTiming(null);
     usage.reload();
     budget.reload();
     await reload();
@@ -304,6 +356,8 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
   // euro value of the position this order replaces (a change re-sizes it)
   const curPos = sel ? (d.positions as Position[]).find((p) => p.symbol === sel.symbol && !p.exit_date) : undefined;
   const curEur = curPos?.value_eur != null ? Math.abs(Number(curPos.value_eur)) : 0;
+  // another member holds this stock: only they can trade it
+  const locked = !!sel && !d.adminView && held.has(sel.symbol) && d.owners[sel.symbol] && !d.owners[sel.symbol].mine;
 
   return (
     <>
@@ -312,6 +366,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
         exchange, with no commissions. Orders placed after that exchange has closed, or at the weekend, are executed at the close of the next
         trading day. Until the close you can cancel or replace
         an order. A short is closed automatically if the price rises {pct(d.settings.stop_threshold, 0).replace("+", "")} above entry.
+        You can also set your own <b>stop loss</b> on each of your positions. Each member manages only the positions they opened.
       </Notice>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
 
@@ -337,13 +392,16 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
             </div>
           )}
           {budget.data && (() => {
-            const b = budget.data!, used = Number(b.used), limit = Number(b.limit), share = limit > 0 ? Math.min(1, used / limit) : 1;
+            const b = budget.data!, split = b.split !== false;
+            const used = split ? Number(b.used) : Number(b.teamUsed), limit = Number(b.limit), share = limit > 0 ? Math.min(1, used / limit) : 1;
             return (
               <div className={`budget-meter ${used > limit ? "full" : ""}`}>
                 <div className="bm-head">
-                  <span>Your budget</span>
+                  <span>{split ? "Your budget" : "Team budget"}</span>
                   <b>{eur(used)} / {eur(limit)}</b>
-                  <span className="muted small">invested (long + short) · team value {eur(Number(b.nav))} ÷ {b.members} {b.members === 1 ? "member" : "members"}</span>
+                  <span className="muted small">{split
+                    ? <>invested (long + short) · team value {eur(Number(b.nav))} ÷ {b.members} {b.members === 1 ? "member" : "members"}</>
+                    : <>invested by the whole team (long + short) · shared budget: your president has switched off the split · you {eur(Number(b.used))}</>}</span>
                 </div>
                 <div className="bm-bar" aria-hidden="true"><i style={{ width: `${(share * 100).toFixed(1)}%` }} /></div>
               </div>
@@ -379,7 +437,10 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                   Execution at the close of <b>{date(timing.exec_date)}</b>. You can change or cancel it until {dateTime(timing.cutoff_at)}.
                 </p>
               )}
-              {(() => {
+              {locked && (
+                <Notice kind="warn">The team holds {sel.symbol}, opened by <b>{d.owners[sel.symbol]?.by}</b>. Each member can change, close or set a stop loss only on their own positions.</Notice>
+              )}
+              {!locked && (() => {
                 const h = held.get(sel.symbol);
                 if (!h) return (
                   <div className="trade-choices" role="radiogroup" aria-label="Order type">
@@ -409,7 +470,7 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                   </>
                 );
               })()}
-              {action !== "close" && (
+              {!locked && action !== "close" && (
                 <div className="qty-row">
                   <label htmlFor="qty">{action === "change" ? `Shares to hold after the order (${side})` : `Number of shares to ${side === "short" ? "sell short" : "buy"}`}</label>
                   <div className="row" style={{ gap: 8 }}>
@@ -424,7 +485,18 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                   )}
                 </div>
               )}
-              {indicative !== null && action !== "close" && (
+              {!locked && action !== "close" && (
+                <div className="stop-row">
+                  <label htmlFor="stop">Stop loss (optional, price in {ccy || "the stock's currency"})</label>
+                  <input id="stop" inputMode="decimal" value={stop} onChange={(e) => setStop(e.target.value.replace(/[^0-9.,]/g, ""))}
+                    placeholder={sel.lastPrice ? (side === "long" ? `e.g. ${num(sel.lastPrice * 0.9, 2)} (10% below)` : `e.g. ${num(sel.lastPrice * 1.1, 2)} (10% above)`) : "price"} />
+                  <p className="small muted" style={{ margin: "4px 0 0" }}>
+                    {side === "long" ? "If the stock closes at or below this price" : "If the stock closes at or above this price"}, the position is closed at that day's close.
+                    {d.stops[sel.symbol] ? ` Current stop: ${num(d.stops[sel.symbol].price, 4)} (left as it is if you leave this empty).` : ""}
+                  </p>
+                </div>
+              )}
+              {!locked && indicative !== null && action !== "close" && (
                 <div className="cost-box">
                   <div className="cost-main">
                     <span className="muted small">Estimated amount</span>
@@ -435,15 +507,16 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                     The order is executed at the close of {timing ? date(timing.exec_date) : "the execution day"}: the final amount depends on that price.
                   </div>
                   {budget.data && indicativeEur !== null && (() => {
-                    const after = Number(budget.data.used) - (action === "change" ? curEur : 0) + indicativeEur;
+                    const split = budget.data.split !== false;
+                    const after = Number(split ? budget.data.used : budget.data.teamUsed) - (action === "change" ? curEur : 0) + indicativeEur;
                     const lim = Number(budget.data.limit);
-                    return <div className={`small ${after > lim ? "neg" : ""}`}>Your budget after this order: <b>{eur(after)}</b> of {eur(lim)}{after > lim ? " · over budget: the order will be refused" : ""}</div>;
+                    return <div className={`small ${after > lim ? "neg" : ""}`}>{split ? "Your budget" : "Team budget"} after this order: <b>{eur(after)}</b> of {eur(lim)}{after > lim ? " · over budget: the order will be refused" : ""}</div>;
                   })()}
                 </div>
               )}
               <div className="row">
-                <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>{describe(action, side, qty ? num(Number(qty), 0) : "…", sel.symbol, held.get(sel.symbol)?.side)}</button>
-                <button className="secondary" onClick={() => { setSel(null); setTiming(null); }}>Cancel</button>
+                {!locked && <button onClick={submit} disabled={busy || (action !== "close" && !(Number(qty) > 0))}>{describe(action, side, qty ? num(Number(qty), 0) : "…", sel.symbol, held.get(sel.symbol)?.side)}</button>}
+                <button className="secondary" onClick={() => { setSel(null); setTiming(null); setStop(""); }}>{locked ? "Close" : "Cancel"}</button>
               </div>
             </div>
           )}
@@ -466,20 +539,29 @@ function Orders({ d, reload }: { d: any; reload: () => Promise<void> }) {
                     return px && r && o.target_quantity ? eur((Number(o.target_quantity) * px) / r) : "–";
                   })()}</td>
                   <td>{date(o.exec_date)}</td>
-                  <td>{editable(o.cutoff_at)
-                    ? <button className="danger small" title={`Until ${dateTime(o.cutoff_at)}`} onClick={() => cancel("cancel_order", o.id)}>Cancel</button>
-                    : <span className="badge pending" title="The market has closed: the order is executed at that close">locked</span>}</td></tr>
+                  <td>{!editable(o.cutoff_at)
+                    ? <span className="badge pending" title="The market has closed: the order is executed at that close">locked</span>
+                    : d.adminView || d.orderBy[o.id]?.mine
+                      ? <button className="danger small" title={`Until ${dateTime(o.cutoff_at)}`} onClick={() => cancel("cancel_order", o.id)}>Cancel</button>
+                      : <span className="muted small">by {d.orderBy[o.id]?.by ?? "another member"}</span>}</td></tr>
               ))}</tbody>
             </table></div>
           )}
           <h3 style={{ marginTop: 20 }}>Holdings</h3>
           {held.size === 0 ? <p className="muted">No holdings yet.</p> : (
             <div className="table-wrap"><table>
-              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th /></tr></thead>
-              <tbody>{[...held].map(([s, h]) => (
+              <thead><tr><th>Stock</th><th>Side</th><th className="num">Quantity</th><th>By</th><th>Stop loss</th><th /></tr></thead>
+              <tbody>{[...held].map(([s, h]) => {
+                const mine = d.adminView || d.owners[s]?.mine;
+                const pos = (d.positions as Position[]).find((p) => p.symbol === s && !p.exit_date);
+                const lp = pos?.last_price != null ? Number(pos.last_price) : (d.instruments[s] as any)?.last_price != null ? Number((d.instruments[s] as any).last_price) : null;
+                return (
                 <tr key={s}><td>{s}{h.pending && <span className="badge pending" style={{ marginLeft: 6 }}>pending</span>}</td><td><span className={`badge ${h.side}`}>{h.side}</span></td><td className="num">{num(h.quantity, 0)}</td>
-                  <td className="row" style={{ gap: 6 }}><button className="secondary small" onClick={() => prefill(s, "change")}>Change</button><button className="secondary small" onClick={() => prefill(s, "close")}>Close</button></td></tr>
-              ))}</tbody>
+                  <td className="small">{mine && !d.adminView ? "you" : d.owners[s]?.by ?? "–"}</td>
+                  <td><StopLossCell d={d} symbol={s} side={h.side} lastPrice={lp} reload={reload} /></td>
+                  <td>{mine ? <span className="row" style={{ gap: 6, flexWrap: "nowrap" }}><button className="secondary small" onClick={() => prefill(s, "change")}>Change</button><button className="secondary small" onClick={() => prefill(s, "close")}>Close</button></span> : <span className="muted small">only {d.owners[s]?.by ?? "its owner"}</span>}</td></tr>
+                );
+              })}</tbody>
             </table></div>
           )}
         </div>
@@ -514,7 +596,7 @@ function History({ d }: { d: any }) {
               <Fragment key={p.id}>
               <tr className="clickable" onClick={() => setChart(chart === p.id ? null : p.id)}><td>{p.symbol}</td><td><span className={`badge ${p.side}`}>{p.side}</span></td><td className="num">{num(p.quantity, 0)}</td>
                 <td>{date(p.entry_date)}</td><td className="num">{num(p.entry_price, 4)}</td><td>{date(p.exit_date)}</td><td className="num">{num(p.exit_price, 4)}</td>
-                <td>{p.exit_reason === "stop" ? <span className="badge rejected">stop -50%</span> : p.exit_reason}</td>
+                <td>{p.exit_reason === "stop" ? <span className="badge rejected">stop -50%</span> : p.exit_reason === "stop_loss" ? <span className="badge rejected">stop loss</span> : p.exit_reason}</td>
                 <td className={`num ${signClass(p.pnl_local)}`}>{num(p.pnl_local)}</td><td className={`num ${signClass(p.pnl_eur)}`}>{eur(p.pnl_eur)}</td>
                 <td><button className="secondary small chart-toggle">{chart === p.id ? "Hide chart" : "Chart"}</button></td></tr>
               {chart === p.id && <tr className="chart-row"><td colSpan={11}><RowDetail><StockChart symbol={p.symbol} entryPrice={Number(p.entry_price)} entryDate={p.entry_date} side={p.side} /></RowDetail></td></tr>}
@@ -564,9 +646,10 @@ function TeamTab({ teamId, admin }: { teamId: string; admin: boolean }) {
               {t.role !== "member" && <td className="small">{m.email}</td>}<td><LinkedIn url={m.linkedin} small /></td><td className="small">{date(m.joined)}</td></tr>
           ))}</tbody>
         </table></div>
-        <p className="muted small" style={{ marginTop: 12 }}>Every member can place and cancel orders for the team. Add your LinkedIn link in the Account tab. To remove a member, contact the organiser.</p>
+        <p className="muted small" style={{ marginTop: 12 }}>Every member places orders for the team, and manages only their own positions and orders: the member who opened a position is the only one who can change it, close it or set its stop loss. Add your LinkedIn link in the Account tab. To remove a member, contact the organiser.</p>
       </div>
       <StockLimit teamId={teamId} canEdit={admin || (t.role === "president")} competition={teams.find((x) => x.id === teamId)?.competition ?? null} />
+      <BudgetSplit teamId={teamId} canEdit={admin || t.role === "president"} members={t.members.length} />
     </div>
   );
 }
@@ -598,6 +681,40 @@ function StockLimit({ teamId, canEdit, competition }: { teamId: string; canEdit:
             </select>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** The president decides whether the team's value is split equally among the members (default) or shared. */
+function BudgetSplit({ teamId, canEdit, members }: { teamId: string; canEdit: boolean; members: number }) {
+  const q = useLoad(async () => must(supabase.from("teams").select("budget_split").eq("id", teamId).single()) as Promise<any>, [teamId]);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!q.data) return null;
+  const on: boolean = q.data.budget_split !== false;
+  const set = async (v: boolean) => {
+    setBusy(true);
+    const { error } = await supabase.rpc("set_budget_split", { p_team: teamId, p_on: v });
+    setBusy(false);
+    setMsg(error ? { kind: "err", text: errText(error) } : { kind: "ok", text: v ? "Budget split on: each member can invest up to the team value divided by the members." : "Budget split off: members share the whole team value; the team as a whole still cannot invest more than its value." });
+    q.reload();
+  };
+  return (
+    <div className="card">
+      <h3>Budget per member</h3>
+      <p className="muted small">
+        {on
+          ? <>On: each member can invest (long + short) up to the team value divided by the {members} {members === 1 ? "member" : "members"}.</>
+          : <>Off: there is no personal budget. Members share the whole team value, first come first served.</>}
+        {" "}In both cases the team as a whole cannot invest more than its value. {canEdit ? "" : "The president decides."}
+      </p>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      {canEdit && (
+        <label className="switch-row">
+          <input type="checkbox" role="switch" checked={on} disabled={busy} onChange={(e) => set(e.target.checked)} />
+          <span><b>Split the budget among the members</b><span className="muted small"> · on by default</span></span>
+        </label>
       )}
     </div>
   );

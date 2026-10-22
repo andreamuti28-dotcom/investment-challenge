@@ -58,6 +58,18 @@ export interface Transfer {
   /** date whose ECB rate executes the transfer (missing: first rate of its month) */
   execDate?: string | null;
 }
+/** A member's stop loss on a stock of the team: from the close of effDate, if the stock closes at
+ *  or beyond the stop (long: at or below, short: at or above) the position is closed at that
+ *  close. stopPrice null removes the stop. A new position starts without a stop, except stops set
+ *  after its open order for the same close. */
+export interface StopRow {
+  id?: string;
+  teamId: string;
+  symbol: string;
+  stopPrice: number | null;
+  createdAt: string;
+  effDate: string;
+}
 export interface PriceRow {
   symbol: string;
   date: string;
@@ -87,6 +99,7 @@ export interface EngineInput {
   prices: PriceRow[];
   events: EventRow[];
   fx: FxRow[];
+  stops?: StopRow[];
 }
 
 export interface PositionOut {
@@ -99,7 +112,7 @@ export interface PositionOut {
   entryPrice: number;
   exitDate: string | null;
   exitPrice: number | null;
-  exitReason: "order" | "change" | "stop" | null;
+  exitReason: "order" | "change" | "stop" | "stop_loss" | null;
   openMonth: number;
   closeMonth: number | null;
   orderId: string;
@@ -109,6 +122,8 @@ export interface PositionOut {
   valueEur: number | null;
   pnlLocal: number | null;
   pnlEur: number | null;
+  /** stop loss active on the position at the end of the run (open positions) */
+  stopLoss?: number | null;
 }
 export interface LedgerOut {
   teamId: string;
@@ -419,6 +434,18 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
     }
 
     const findOpen = (sym: string) => open.find((p) => p.out.symbol === sym);
+    // stop losses: events of this team by effective date, and the stop currently active per stock
+    const tStops = (input.stops ?? []).filter((x) => x.teamId === team.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const stopsOn = new Map<string, StopRow[]>();
+    for (const x of tStops) {
+      if (!stopsOn.has(x.effDate)) stopsOn.set(x.effDate, []);
+      stopsOn.get(x.effDate)!.push(x);
+    }
+    const activeStop = new Map<string, number>();
+    const setStop = (sym: string, v: number | null) => (v && v > 0 ? activeStop.set(sym, v) : activeStop.delete(sym));
+    // stop events dated before the first replayed day apply from the first day
+    const firstDay = days[0];
+    if (firstDay) for (const x of tStops) if (x.effDate < firstDay) setStop(x.symbol, x.stopPrice);
     const closePos = (p: OpenPos, d: string, exitPrice: number, reason: PositionOut["exitReason"]) => {
       const o = p.out;
       o.exitDate = d;
@@ -426,8 +453,9 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       o.exitReason = reason;
       o.closeMonth = monthOf(d);
       const amt = o.side === "long" ? o.quantity * exitPrice : -o.quantity * exitPrice;
-      addCash(o.currency, amt, d, "trade", `${reason === "stop" ? "stop" : "close"} ${o.side} ${o.quantity} ${o.symbol} @ ${exitPrice}`);
+      addCash(o.currency, amt, d, "trade", `${reason === "stop" ? "stop" : reason === "stop_loss" ? "stop loss" : "close"} ${o.side} ${o.quantity} ${o.symbol} @ ${exitPrice}`);
       open.splice(open.indexOf(p), 1);
+      if (reason !== "change") activeStop.delete(o.symbol);
     };
     const openPos = (ord: Order, side: Side, qty: number, d: string, p: number) => {
       const c = ccyOf.get(ord.symbol)!;
@@ -458,6 +486,8 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
     };
 
     for (const d of days) {
+      // stops that take effect at today's close
+      for (const x of stopsOn.get(d) ?? []) setStop(x.symbol, x.stopPrice);
       // a) positions held from before today: splits, dividends (holder of record keeps the
       //    dividend even if it sells today), then the stop on shorts. The stop runs BEFORE
       //    orders so that a loss can never exceed the threshold (Art. 7), even on gaps.
@@ -482,7 +512,15 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
           if (c !== undefined && c >= trigger - 1e-12) {
             closePos(p, d, trigger, "stop");
             ops += 1;
+            continue;
           }
+        }
+        // the member's stop loss: closed at today's close when it reaches the stop
+        const sl = activeStop.get(o.symbol);
+        const c = closeOn(o.symbol, d);
+        if (sl !== undefined && c !== undefined && (o.side === "long" ? c <= sl + 1e-12 : c >= sl - 1e-12)) {
+          closePos(p, d, c, "stop_loss");
+          ops += 1;
         }
       }
 
@@ -535,6 +573,9 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
           }
           openPos(o, o.side!, o.quantity!, d, p);
           ops += 1;
+          // a new position starts without a stop, except stops set after its order for this close
+          activeStop.delete(o.symbol);
+          for (const x of stopsOn.get(d) ?? []) if (x.symbol === o.symbol && x.createdAt >= o.createdAt) setStop(x.symbol, x.stopPrice);
         }
         st.status = "executed";
         st.executedDate = d;
@@ -588,6 +629,8 @@ export function runEngine(input: EngineInput, asOfRequested: string): EngineOutp
       }
       return nav;
     }
+
+    for (const p of open) p.out.stopLoss = activeStop.get(p.out.symbol) ?? null;
 
     // month 0
     out.navMonthly.push({ teamId: team.id, monthN: 0, valuationDate: S.startDate, navEur: S.capital });
@@ -767,6 +810,7 @@ export function runChallenge(input: EngineInput, asOfRequested: string): EngineO
     months: generateMonths(ps, eve),
     orders: practiceOrders,
     transfers: [],
+    stops: (input.stops ?? []).filter((x) => x.effDate < S.startDate),
   };
   if (asOfRequested < S.startDate) return runEngine(practiceInput, asOfRequested);
 
@@ -785,7 +829,16 @@ export function runChallenge(input: EngineInput, asOfRequested: string): EngineO
       execDate: S.startDate,
     }));
   const carriedIds = new Set(carried.map((c) => c.id));
-  const official = runEngine({ ...input, settings: { ...S, practiceStartDate: null }, orders: [...carried, ...officialOrders] }, asOfRequested);
+  // the stop losses active at the end of the practice stay on the carried positions
+  const carriedStops: StopRow[] = practice.positions
+    .filter((p) => p.exitDate === null && p.stopLoss)
+    .map((p) => ({ teamId: p.teamId, symbol: p.symbol, stopPrice: p.stopLoss!, createdAt: "0000-01-01T00:00:01Z", effDate: S.startDate }));
+  const official = runEngine({
+    ...input,
+    settings: { ...S, practiceStartDate: null },
+    orders: [...carried, ...officialOrders],
+    stops: [...carriedStops, ...(input.stops ?? []).filter((x) => x.effDate >= S.startDate)],
+  }, asOfRequested);
 
   // carried opens are not trades: remove them from the operations count and from the order history
   const carriedExecuted = new Map<string, number>();
