@@ -45,12 +45,17 @@ async function refreshResults() {
 
 function Teams() {
   const q = useLoad(async () => {
-    const [teams, contacts, access, members] = await Promise.all([
+    const [teams, contacts, access, members, lb, ord] = await Promise.all([
       must(supabase.from("teams").select("*").order("competition").order("name")),
       must(supabase.from("team_contacts").select("*")),
       must(supabase.from("team_access").select("team_id,code,updated_at")),
       must(supabase.from("team_members").select("team_id,role,full_name")),
+      must(supabase.from("leaderboard").select("team_id,nav,total_return,rank_in_competition,invested_share")),
+      must(supabase.from("orders").select("team_id,status")),
     ]);
+    const lbm = Object.fromEntries((lb as any[]).map((x) => [x.team_id, x]));
+    const oc: Record<string, number> = {};
+    for (const o of ord as any[]) if (o.status !== "cancelled") oc[o.team_id] = (oc[o.team_id] ?? 0) + 1;
     const c = Object.fromEntries((contacts as any[]).map((x) => [x.team_id, x]));
     const a = Object.fromEntries((access as any[]).map((x) => [x.team_id, x]));
     const m = members as any[];
@@ -58,9 +63,14 @@ function Teams() {
       ...t, contact: c[t.id] ?? {}, access: a[t.id] ?? null,
       members: m.filter((x) => x.team_id === t.id).length,
       president: m.find((x) => x.team_id === t.id && x.role === "president")?.full_name ?? null,
+      owner: m.find((x) => x.team_id === t.id)?.full_name ?? null,
+      lb: lbm[t.id] ?? null,
+      orders: oc[t.id] ?? 0,
     }));
   });
-  const empty = { name: "", competition: "A", university: "" };
+  const [comp, setComp] = useState<"A" | "B" | "C">(() => { try { return (sessionStorage.getItem("ic_admin_comp") as any) || "A"; } catch { return "A"; } });
+  const pickComp = (c: "A" | "B" | "C") => { setComp(c); try { sessionStorage.setItem("ic_admin_comp", c); } catch { /* per-tab convenience */ } };
+  const empty: { name: string; competition: string; university: string } = { name: "", competition: comp === "C" ? "A" : comp, university: "" };
   const [form, setForm] = useState(empty);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: ReactNode } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -86,30 +96,102 @@ function Teams() {
 
   if (q.error) return <Notice kind="err">{q.error}</Notice>;
   if (!q.data) return <Loading />;
+  const COMPS: { c: "A" | "B" | "C"; title: string; sub: string }[] = [
+    { c: "A", title: "Associations", sub: "one team per association" },
+    { c: "B", title: "International", sub: "mixed teams drawn at random" },
+    { c: "C", title: "Individual", sub: "one portfolio per person" },
+  ];
+  const list = q.data.filter((t: any) => t.competition === comp);
   return (
     <>
+      <div className="admin-comps" role="tablist" aria-label="Competition">
+        {COMPS.map(({ c, title, sub }) => {
+          const n = q.data!.filter((t: any) => t.competition === c);
+          return (
+            <button key={c} type="button" role="tab" aria-selected={comp === c} className={`admin-comp ${comp === c ? "on" : ""}`}
+              onClick={() => { pickComp(c); setForm({ ...empty, competition: c === "C" ? "A" : c }); setMsg(null); }}>
+              <span className="hub-letter">{c}</span>
+              <span className="ac-text"><b>Competition {c} · {title}</b><span className="muted small">{sub}</span></span>
+              <span className="ac-count"><b>{n.length}</b><span className="muted small">{c === "C" ? (n.length === 1 ? "portfolio" : "portfolios") : n.length === 1 ? "team" : "teams"} · {n.reduce((a: number, t: any) => a + t.members, 0)} people</span></span>
+            </button>
+          );
+        })}
+      </div>
       {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      {comp === "C" ? (
+        <div className="card">
+          <h3>Individual portfolios (Competition C)</h3>
+          <p className="muted small">Each participant can open one personal portfolio of the full capital from their Competitions screen. It has no president and no team code. A portfolio enters the ranking once at least half of its value is invested.</p>
+          {list.length === 0 ? <p className="muted">Nobody has opened an individual portfolio yet.</p> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Participant</th><th>Association</th><th className="num">Orders</th><th className="num">Value</th><th className="num">Return</th><th className="num">Invested</th><th>Rank</th><th /></tr></thead>
+              <tbody>{list.map((t: any) => <CRow key={t.id} t={t} reload={q.reload} setMsg={setMsg} />)}</tbody>
+            </table></div>
+          )}
+        </div>
+      ) : (<>
+      {comp === "B" && <Notice>Competition B teams are drawn at random in the Accounts tab (Competition B draw). You can also add one by hand here.</Notice>}
       <div className="card">
         <h3>Add a team</h3>
         <p className="muted small">A team code is generated automatically. Give it to the president: everyone registers with their own account and joins the team with the code. You choose the president in the Accounts tab.</p>
         <div className="row">
           <div className="field"><label htmlFor="tn">Team name</label><input id="tn" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-          <div className="field narrow"><label htmlFor="tcomp">Competition</label><select id="tcomp" value={form.competition} onChange={(e) => setForm({ ...form, competition: e.target.value })}><option value="A">A · Associations</option><option value="B">B · International</option></select></div>
+          <div className="field narrow"><label htmlFor="tcomp">Competition</label><select id="tcomp" value={form.competition} onChange={(e) => { setForm({ ...form, competition: e.target.value }); pickComp(e.target.value as "A" | "B"); }}><option value="A">A · Associations</option><option value="B">B · International</option></select></div>
           <div className="field"><label htmlFor="tu">Association / composition</label><input id="tu" value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })} /></div>
           <button style={{ alignSelf: "flex-end" }} disabled={busy || !form.name.trim()} onClick={addTeam}>{busy ? "Adding…" : "Add team"}</button>
         </div>
       </div>
+      {list.length === 0 ? <p className="muted">No Competition {comp} teams yet.</p> : (
       <div className="table-wrap">
         <table>
           <thead><tr><th>Team</th><th>Comp.</th><th>President</th><th className="num">Members</th><th>Team code</th><th className="num">Violations</th><th /></tr></thead>
           <tbody>
-            {q.data.map((t: any) => <TeamRow key={t.id} t={t} reload={q.reload} setMsg={setMsg} />)}
+            {list.map((t: any) => <TeamRow key={t.id} t={t} reload={q.reload} setMsg={setMsg} />)}
           </tbody>
         </table>
       </div>
+      )}
+      </>)}
     </>
   );
 }
+
+/** One individual portfolio (Competition C): no president, no code. */
+function CRow({ t, reload, setMsg }: any) {
+  const [busy, setBusy] = useState(false);
+  const inv = t.lb?.invested_share != null ? Number(t.lb.invested_share) : null;
+  async function del() {
+    const typed = window.prompt(`This permanently deletes the individual portfolio of ${t.name} with its orders and results. The account stays and can open a new one. It cannot be undone.\n\nType the name to confirm:`);
+    if (typed === null) return;
+    if (typed.trim() !== t.name) return setMsg({ kind: "err", text: "The name did not match: nothing was deleted." });
+    setBusy(true);
+    try {
+      await callFunction("admin", { action: "delete_team", teamId: t.id });
+      setMsg({ kind: "ok", text: `Individual portfolio of ${t.name} deleted.` });
+      await reload();
+      refreshResults();
+    } catch (e) { setMsg({ kind: "err", text: errText(e) }); }
+    setBusy(false);
+  }
+  return (
+    <tr>
+      <td><b>{t.owner ?? t.name}</b></td>
+      <td className="small">{t.university === "Individual" ? <span className="muted">–</span> : t.university}</td>
+      <td className="num">{t.orders}</td>
+      <td className="num">{t.lb?.nav != null ? eurS(Number(t.lb.nav)) : "–"}</td>
+      <td className="num">{t.lb?.total_return != null ? pct(Number(t.lb.total_return)) : "–"}</td>
+      <td className="num">{inv != null ? pct(inv, 0).replace("+", "") : "–"}</td>
+      <td>{t.lb?.rank_in_competition ? `#${t.lb.rank_in_competition}` : <span className="muted small">{t.orders === 0 ? "opened, no orders yet" : "not invested enough yet"}</span>}</td>
+      <td>
+        <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+          <Link className="btn small" to={`/admin/team/${t.id}`}>Open portfolio</Link>
+          <button className="danger small" disabled={busy} onClick={del}>Delete</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+const eurS = (v: number) => new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
 
 function TeamRow({ t, reload, setMsg }: any) {
   const [show, setShow] = useState(false);

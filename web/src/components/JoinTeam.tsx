@@ -40,6 +40,7 @@ export default function JoinTeam({ inline = false }: { inline?: boolean } = {}) 
         <div className="stack" style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
           <p className="sub" style={{ margin: 0 }}>You can also play on your own: open your individual € 1,000,000 portfolio (Competition C), with as many stocks as you like.</p>
           <button type="button" className="secondary" disabled={busy} onClick={async () => {
+            if (!window.confirm("Open your individual portfolio (Competition C)?\n\nIt is a separate € 1,000,000 portfolio in your own name, besides your association team: you trade it alone, with as many stocks as you like, and it is ranked only once at least half of it is invested. It appears with your name in the participants list.")) return;
             setBusy(true); setErr("");
             const { error } = await supabase.rpc("join_competition_c");
             setBusy(false);

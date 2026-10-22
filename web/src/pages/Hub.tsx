@@ -34,6 +34,7 @@ export default function Hub() {
 
   const enter = (c: Comp) => { auth.setCompetition(c); nav("/team"); };
   async function openC() {
+    if (!window.confirm("Open your individual portfolio (Competition C)?\n\nIt is a separate € 1,000,000 portfolio in your own name, besides your association team: you trade it alone, with as many stocks as you like, and it is ranked only once at least half of it is invested. It appears with your name in the participants list.")) return;
     setBusy(true); setErr("");
     const { error } = await supabase.rpc("join_competition_c");
     if (error) { setBusy(false); return setErr(errText(error)); }
