@@ -6,8 +6,9 @@ import { calendarMonths } from "../lib/months";
 import { loadEdition } from "../lib/edition";
 import { date, dateTime, download, num, pct, toCsv } from "../lib/format";
 import { Loading, Notice, Tabs } from "../components/ui";
+import { imageToDataUrl, logoSrc, type Partner } from "../lib/partners";
 
-type Tab = "teams" | "accounts" | "orders" | "data" | "manual" | "settings" | "engine" | "visits" | "export";
+type Tab = "teams" | "partners" | "accounts" | "orders" | "data" | "manual" | "settings" | "engine" | "visits" | "export";
 
 export default function Admin() {
   const [tab, setTab] = useState<Tab>("teams");
@@ -21,8 +22,9 @@ export default function Admin() {
   return (
     <>
       <div className="page-head"><div className="eyebrow">Organiser</div><h1>Admin panel</h1></div>
-      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["accounts", open ? `Accounts (${open})` : "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["manual", "Manual corrections"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
+      <Tabs value={tab} onChange={setTab} items={[["teams", "Teams"], ["partners", "Partners"], ["accounts", open ? `Accounts (${open})` : "Accounts"], ["orders", "Orders"], ["data", "Market data"], ["manual", "Manual corrections"], ["settings", "Calendar & settings"], ["engine", "Engine"], ["visits", "Visits"], ["export", "Export"]]} />
       {tab === "teams" && <Teams />}
+      {tab === "partners" && <Partners />}
       {tab === "accounts" && <Accounts />}
       {tab === "visits" && <Visits />}
       {tab === "manual" && <MarketData manual />}
@@ -687,5 +689,123 @@ function Export() {
       <p className="muted small" style={{ marginTop: 12 }}>Total return values are fractions (0.0123 = {pct(0.0123)}).</p>
     </div>
     </>
+  );
+}
+
+// ---------------------------------------------------------------- partners (home page logos)
+type PartnerDraft = { id?: string; name: string; subtitle: string; url: string; logo: string; visible: boolean };
+const emptyPartner: PartnerDraft = { name: "", subtitle: "", url: "", logo: "", visible: true };
+
+function Partners() {
+  const q = useLoad(async () => (await must(supabase.from("partners").select("*").order("sort_order").order("name"))) as Partner[]);
+  const [draft, setDraft] = useState<PartnerDraft | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (q.error) return <Notice kind="err">{q.error}</Notice>;
+  if (!q.data) return <Loading />;
+  const list = q.data;
+  const run = async (f: () => Promise<{ error: unknown }>, ok: string) => {
+    setBusy(true); setMsg(null);
+    const { error } = await f();
+    setBusy(false);
+    if (error) { setMsg({ kind: "err", text: errText(error as any) }); return false; }
+    setMsg({ kind: "ok", text: ok }); q.reload(); return true;
+  };
+  const move = async (i: number, d: -1 | 1) => {
+    const a = list[i], b = list[i + d];
+    if (!a || !b) return;
+    // rewrite the order of the whole list so equal positions never get stuck
+    const order = list.map((p) => p.id);
+    [order[i], order[i + d]] = [order[i + d], order[i]];
+    await run(async () => {
+      for (let k = 0; k < order.length; k++) {
+        const { error } = await supabase.from("partners").update({ sort_order: k + 1 }).eq("id", order[k]);
+        if (error) return { error };
+      }
+      return { error: null };
+    }, "Order updated.");
+  };
+  const save = async () => {
+    if (!draft) return;
+    if (!draft.name.trim()) return setMsg({ kind: "err", text: "Enter the name of the association." });
+    if (!draft.logo) return setMsg({ kind: "err", text: "Upload the logo." });
+    let url = draft.url.trim();
+    if (url && !/^https?:\/\//i.test(url)) url = "https://" + url;
+    const row = { name: draft.name.trim(), subtitle: draft.subtitle.trim() || null, url: url || null, logo: draft.logo, visible: draft.visible, updated_at: new Date().toISOString() };
+    const done = await run(
+      () => (draft.id
+        ? supabase.from("partners").update(row).eq("id", draft.id)
+        : supabase.from("partners").insert({ ...row, sort_order: (list.at(-1)?.sort_order ?? 0) + 1 })) as any,
+      draft.id ? "Partner updated: the home page shows it at once." : "Partner added: the home page shows it at once.",
+    );
+    if (done) setDraft(null);
+  };
+  return (
+    <>
+      {msg && <Notice kind={msg.kind}>{msg.text}</Notice>}
+      <div className="card">
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Participating associations</h3>
+            <p className="muted small" style={{ margin: "4px 0 0" }}>The logos that scroll on the home page, in this order. Hidden ones stay here but are not shown.</p>
+          </div>
+          {!draft && <button onClick={() => { setMsg(null); setDraft({ ...emptyPartner }); }}>+ Add a logo</button>}
+        </div>
+        {draft && <PartnerForm draft={draft} setDraft={setDraft} busy={busy} onSave={save} onError={(t) => setMsg({ kind: "err", text: t })} />}
+        {list.length === 0 ? <p className="muted">No logos yet: the home page shows "Announced soon".</p> : (
+          <div className="partner-admin-list">
+            {list.map((p, i) => (
+              <div key={p.id} className={`partner-admin${p.visible ? "" : " off"}`}>
+                <span className="logo-tile"><img src={logoSrc(p.logo)} alt="" /></span>
+                <div className="pa-text">
+                  <b>{p.name}</b>
+                  <span className="muted small">{p.subtitle || "–"}{p.url ? <> · <a href={p.url} target="_blank" rel="noreferrer">link</a></> : null}{p.visible ? "" : " · hidden"}</span>
+                </div>
+                <div className="pa-actions">
+                  <button className="secondary small" disabled={busy || i === 0} onClick={() => move(i, -1)} aria-label="Move up">↑</button>
+                  <button className="secondary small" disabled={busy || i === list.length - 1} onClick={() => move(i, 1)} aria-label="Move down">↓</button>
+                  <button className="secondary small" disabled={busy} onClick={() => run(() => supabase.from("partners").update({ visible: !p.visible }).eq("id", p.id) as any, p.visible ? `${p.name} hidden from the home page.` : `${p.name} shown on the home page.`)}>{p.visible ? "Hide" : "Show"}</button>
+                  <button className="secondary small" disabled={busy} onClick={() => { setMsg(null); setDraft({ id: p.id, name: p.name, subtitle: p.subtitle ?? "", url: p.url ?? "", logo: p.logo, visible: p.visible }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button>
+                  <button className="danger small" disabled={busy} onClick={() => { if (window.confirm(`Remove ${p.name} from the home page for good?`)) run(() => supabase.from("partners").delete().eq("id", p.id) as any, `${p.name} removed.`); }}>Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function PartnerForm({ draft, setDraft, busy, onSave, onError }: { draft: PartnerDraft; setDraft: (d: PartnerDraft | null) => void; busy: boolean; onSave: () => void; onError: (t: string) => void }) {
+  const set = (k: keyof PartnerDraft, v: unknown) => setDraft({ ...draft, [k]: v });
+  return (
+    <form className="partner-form" onSubmit={(e) => { e.preventDefault(); onSave(); }}>
+      <h4 style={{ margin: "0 0 12px" }}>{draft.id ? "Edit logo" : "New logo"}</h4>
+      <div className="pf-grid">
+        <div className="pf-logo">
+          <span className="logo-tile big">{draft.logo ? <img src={logoSrc(draft.logo)} alt="" /> : <span className="muted small">No logo</span>}</span>
+          <label className="btn secondary small" style={{ cursor: "pointer" }}>
+            {draft.logo ? "Replace image" : "Upload image"}
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={async (e) => {
+              const f = e.target.files?.[0]; e.target.value = "";
+              if (!f) return;
+              try { set("logo", await imageToDataUrl(f)); } catch (err) { onError((err as Error).message); }
+            }} />
+          </label>
+          <p className="muted small" style={{ margin: 0 }}>PNG with a transparent background works best. Resized automatically.</p>
+        </div>
+        <div className="stack">
+          <div><label htmlFor="pa-n">Association</label><input id="pa-n" maxLength={80} value={draft.name} onChange={(e) => set("name", e.target.value)} placeholder="Starting Finance Club Bicocca" /></div>
+          <div><label htmlFor="pa-s">University (second line, optional)</label><input id="pa-s" maxLength={80} value={draft.subtitle} onChange={(e) => set("subtitle", e.target.value)} placeholder="Milano Bicocca" /></div>
+          <div><label htmlFor="pa-u">Link (optional: website or Instagram)</label><input id="pa-u" inputMode="url" value={draft.url} onChange={(e) => set("url", e.target.value)} placeholder="https://…" /></div>
+          <label className="check"><input type="checkbox" checked={draft.visible} onChange={(e) => set("visible", e.target.checked)} /> Show on the home page</label>
+          <div className="row">
+            <button type="submit" disabled={busy}>{busy ? "Saving…" : draft.id ? "Save changes" : "Add logo"}</button>
+            <button type="button" className="secondary" onClick={() => setDraft(null)}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </form>
   );
 }

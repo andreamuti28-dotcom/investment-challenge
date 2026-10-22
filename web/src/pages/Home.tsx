@@ -4,19 +4,21 @@ import { loadCalendar, useLoad } from "../lib/data";
 import { date, eur } from "../lib/format";
 import AuthPanel from "../components/AuthPanel";
 import { supabase } from "../lib/supabase";
+import { logoSrc, type Partner } from "../lib/partners";
 import { useEdition } from "../lib/edition";
 
 const SPONSOR_URL = "https://wefocusbuddy.com/a";
 const ORGANISER_URL_FALLBACK = "https://www.linkedin.com/in/andrea-muti-24416b2a1";
 
-/** Logos of the participating associations: add { name, logo, url } entries (logo files in web/public/partners/). */
-const PARTNERS: { name: string; short: string; logo: string; url?: string }[] = [
-  { name: "EFDS Society - Imperial College London", short: "EFDS Society - Imperial College London", logo: "imperial.png" },
-  { name: "Financial Study Association Amsterdam", short: "Financial Study Association Amsterdam", logo: "amsterdam.png" },
-  { name: "Starting Finance Club Bicocca - Milano Bicocca", short: "Starting Finance Club Bicocca - Milano Bicocca", logo: "bicocca.png" },
-];
 
+/** Logos of the participating associations, managed in Admin > Partners. */
 function Partners() {
+  const q = useLoad(async () => {
+    const { data } = await supabase.from("partners").select("id,name,subtitle,url,logo,sort_order,visible").eq("visible", true).order("sort_order").order("name");
+    return (data ?? []) as Partner[];
+  }, []);
+  const PARTNERS = q.data ?? [];
+  if (!q.data) return <div className="partners"><div className="partners-label">Participating associations</div></div>;
   return (
     <div className="partners">
       <div className="partners-label">Participating associations</div>
@@ -26,10 +28,10 @@ function Partners() {
         <div className="partners-marquee">
           <div className="partners-track">
           {[0, 1, 2, 3].flatMap((copy) => PARTNERS.map((p) => ({ ...p, copy }))).map((p) => {
-            const inner = <><span className="logo-tile"><img src={`${import.meta.env.BASE_URL}partners/${p.logo}`} alt={p.name} loading="lazy" /></span><span className="logo-name">{p.short.split(" - ").map((x, i) => <span key={i} className={i ? "uni" : ""}>{x}</span>)}</span></>;
+            const inner = <><span className="logo-tile"><img src={logoSrc(p.logo)} alt={p.name} loading="lazy" /></span><span className="logo-name"><span>{p.name}</span>{p.subtitle && <span className="uni">{p.subtitle}</span>}</span></>;
             return p.url
-              ? <a key={`${p.copy}-${p.name}`} className="partner" href={p.url} target="_blank" rel="noreferrer" title={p.name} aria-hidden={p.copy > 0} tabIndex={p.copy > 0 ? -1 : undefined}>{inner}</a>
-              : <span key={`${p.copy}-${p.name}`} className="partner" title={p.name} aria-hidden={p.copy > 0}>{inner}</span>;
+              ? <a key={`${p.copy}-${p.id}`} className="partner" href={p.url!} target="_blank" rel="noreferrer" title={p.name} aria-hidden={p.copy > 0} tabIndex={p.copy > 0 ? -1 : undefined}>{inner}</a>
+              : <span key={`${p.copy}-${p.id}`} className="partner" title={p.name} aria-hidden={p.copy > 0}>{inner}</span>;
           })}
           </div>
         </div>

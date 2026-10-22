@@ -711,3 +711,19 @@ td.strong { font-weight: 600; }
 @media (max-width: 900px) { .comp-chip .sw { display: none; } }
 @media (max-width: 720px) { .comp-chip .nm { max-width: 110px; } }
 @media (max-width: 480px) { .brand .bt { display: none; } .brand::after { content: "IC"; } .comp-chip .nm { max-width: 130px; } }
+
+/* admin › partners */
+.partner-admin-list { display: grid; gap: 10px; margin-top: 16px; }
+.partner-admin { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-2); }
+.partner-admin.off { opacity: 0.55; }
+.partner-admin .logo-tile { width: 52px; height: 52px; border-radius: 12px; box-shadow: none; flex: none; }
+.partner-admin .pa-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.partner-admin .pa-text b { color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.partner-admin .pa-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.partner-form { margin-top: 16px; padding: 16px; border: 1px solid rgba(123, 156, 255, 0.45); border-radius: var(--radius); background: rgba(91, 123, 255, 0.06); }
+.partner-form .pf-grid { display: grid; grid-template-columns: 180px 1fr; gap: 20px; }
+.partner-form .pf-logo { display: grid; gap: 10px; justify-items: start; align-content: start; }
+.partner-form .logo-tile.big { width: 120px; height: 120px; border-radius: 20px; box-shadow: none; }
+.partner-form label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.partner-form label.check input { width: 18px; min-height: 0; }
+@media (max-width: 640px) { .partner-form .pf-grid { grid-template-columns: 1fr; } .partner-admin { flex-wrap: wrap; } .partner-admin .pa-actions { width: 100%; justify-content: flex-start; } }
